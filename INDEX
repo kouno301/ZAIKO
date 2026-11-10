@@ -1,0 +1,1889 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>部品在庫管理システム</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- SheetJS (xlsx) ライブラリを追加 -->
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <!-- QRコード読み取り用ライブラリ (html5-qrcode) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap');
+    body {
+      font-family: 'Noto Sans JP', 'Inter', sans-serif;
+    }
+    /* スクロールバーのカスタマイズ */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f5f9;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
+
+  <!-- ヘッダー -->
+  <header class="bg-indigo-900 text-white shadow-md sticky top-0 z-30">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center h-16">
+      <div class="flex items-center space-x-3">
+        <i class="fa-solid fa-boxes-stacked text-indigo-400 text-2xl"></i>
+        <h1 class="font-bold text-lg sm:text-xl tracking-tight">パーツ・部品在庫管理システム</h1>
+      </div>
+      <div class="flex items-center space-x-3">
+        <label class="cursor-pointer bg-indigo-700 hover:bg-indigo-600 text-white text-xs sm:text-sm font-medium py-2 px-3 rounded-lg border border-indigo-600 transition flex items-center shadow-sm" title="マスター完成品.xlsxを取り込み">
+          <i class="fa-solid fa-file-excel mr-1.5 text-emerald-300"></i>マスターExcel(xlsx)取込
+          <input type="file" id="excel-file-input" accept=".xlsx, .xls" onchange="handleMasterExcelImport(event)" class="hidden">
+        </label>
+        <button onclick="resetToValidMasterData()" class="bg-indigo-800 hover:bg-rose-700 text-white text-xs sm:text-sm font-medium py-2 px-3 rounded-lg border border-indigo-700 transition flex items-center shadow-sm" title="架空の品番を除去して正規マスターに再初期化">
+          <i class="fa-solid fa-arrow-rotate-left mr-1.5 text-amber-300"></i>初期化
+        </button>
+        <button onclick="exportDataToCSV()" class="bg-indigo-800 hover:bg-indigo-700 text-white text-xs sm:text-sm font-medium py-2 px-3.5 rounded-lg border border-indigo-700 transition flex items-center shadow-sm">
+          <i class="fa-solid fa-file-csv mr-1.5 text-emerald-400"></i>CSV出力
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- タブナビゲーション -->
+  <div class="bg-white border-b border-slate-200 shadow-sm sticky top-16 z-20">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex space-x-4">
+      <button id="tab-inventory-btn" onclick="switchTab('inventory')" class="py-3.5 px-4 font-semibold text-sm border-b-2 border-indigo-600 text-indigo-600 flex items-center transition focus:outline-none">
+        <i class="fa-solid fa-table-list mr-2"></i>【シート1】部品在庫一覧
+        <span id="badge-warning-count" class="ml-2 bg-rose-100 text-rose-700 text-xs px-2 py-0.5 rounded-full font-bold hidden">0</span>
+      </button>
+      <button id="tab-monthly-btn" onclick="switchTab('monthly')" class="py-3.5 px-4 font-medium text-sm border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center transition focus:outline-none">
+        <i class="fa-solid fa-calendar-days mr-2 text-indigo-500"></i>【シート2】月別入出庫・受払表
+      </button>
+      <button id="tab-transactions-btn" onclick="switchTab('transactions')" class="py-3.5 px-4 font-medium text-sm border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center transition focus:outline-none">
+        <i class="fa-solid fa-right-left mr-2"></i>【シート3】入出庫登録・履歴
+      </button>
+    </div>
+  </div>
+
+  <!-- トースト通知 -->
+  <div id="toast" class="fixed bottom-5 right-5 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-xl flex items-center space-x-3 transition-opacity duration-300 opacity-0 pointer-events-none z-50">
+    <span id="toast-icon" class="text-emerald-400 text-lg"></span>
+    <span id="toast-msg" class="text-sm font-medium">通知メッセージ</span>
+  </div>
+
+  <!-- メインコンテンツ -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+    <!-- ============================================== -->
+    <!-- シート1: 部品在庫一覧                           -->
+    <!-- ============================================== -->
+    <div id="sheet-inventory" class="space-y-6">
+      
+      <!-- サマリーステータスバー -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <div class="text-xs font-medium text-slate-500">総登録品目数</div>
+          <div class="text-2xl font-bold text-slate-800 mt-1" id="stat-total-parts">0</div>
+        </div>
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <div class="text-xs font-medium text-slate-500">総在庫数量</div>
+          <div class="text-2xl font-bold text-indigo-600 mt-1" id="stat-total-qty">0</div>
+        </div>
+        <div onclick="filterByStockStatus('WARNING')" class="bg-white p-4 rounded-xl border border-amber-200 bg-amber-50/50 shadow-sm cursor-pointer hover:bg-amber-100/60 transition" title="クリックで絞り込み">
+          <div class="text-xs font-medium text-amber-700 flex justify-between items-center">
+            <span>発注点接近（安全域以下）</span>
+            <i class="fa-solid fa-filter text-amber-500 text-xs"></i>
+          </div>
+          <div class="text-2xl font-bold text-amber-600 mt-1" id="stat-low-stock">0</div>
+        </div>
+        <div onclick="filterByStockStatus('OUT')" class="bg-white p-4 rounded-xl border border-rose-200 bg-rose-50/50 shadow-sm cursor-pointer hover:bg-rose-100/60 transition" title="クリックで絞り込み">
+          <div class="text-xs font-medium text-rose-700 flex justify-between items-center">
+            <span>在庫切れ (0点)</span>
+            <i class="fa-solid fa-filter text-rose-500 text-xs"></i>
+          </div>
+          <div class="text-2xl font-bold text-rose-600 mt-1" id="stat-out-of-stock">0</div>
+        </div>
+      </div>
+
+      <!-- アクション & 検索フィルターバー -->
+      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-3 justify-between items-stretch md:items-center">
+        <div class="flex flex-1 flex-col sm:flex-row gap-2">
+          <!-- 検索インプット & QR読取ボタン -->
+          <div class="relative flex-1 flex gap-2">
+            <div class="relative flex-1">
+              <i class="fa-solid fa-search absolute left-3 top-3 text-slate-400 text-sm"></i>
+              <input type="text" id="inv-search" oninput="renderInventory()" placeholder="品目別名2(品番)で検索..." class="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+            </div>
+            <button onclick="openQRScanModal('inventory')" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-sm font-medium flex items-center shadow-sm transition whitespace-nowrap" title="QRコード読み取りで検索">
+              <i class="fa-solid fa-qrcode mr-1.5 text-base"></i>QR読取
+            </button>
+          </div>
+          <!-- 状態フィルター -->
+          <select id="inv-status-filter" onchange="renderInventory()" class="border border-slate-300 rounded-lg text-sm px-3 py-2 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option value="ALL">全ての状態</option>
+            <option value="OUT">欠品のみ (0点)</option>
+            <option value="WARNING">要補充・在庫切れ</option>
+            <option value="NORMAL">適正在庫のみ</option>
+          </select>
+        </div>
+        <div>
+          <!-- 新規部品登録モーダル呼出ボタン -->
+          <button onclick="openPartModal()" class="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-sm py-2 px-4 rounded-lg shadow-sm transition flex items-center justify-center">
+            <i class="fa-solid fa-plus mr-1.5"></i>新規部品登録
+          </button>
+        </div>
+      </div>
+
+      <!-- 在庫テーブル -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm text-slate-600">
+            <thead class="bg-slate-100 text-slate-700 uppercase font-semibold text-xs border-b border-slate-200">
+              <tr>
+                <th class="py-3.5 px-4 font-bold text-indigo-900">品目別名2 (I列)</th>
+                <th class="py-3.5 px-4 text-right">現在庫数 / 安全在庫</th>
+                <th class="py-3.5 px-4 text-center">充足率</th>
+                <th class="py-3.5 px-4 text-center">状態</th>
+                <th class="py-3.5 px-4 text-center">クイック入出庫</th>
+                <th class="py-3.5 px-4 text-center">操作</th>
+              </tr>
+            </thead>
+            <tbody id="inventory-table-body" class="divide-y divide-slate-100 font-normal">
+              <!-- 動的レンダリング -->
+            </tbody>
+          </table>
+        </div>
+        <div id="no-inventory-msg" class="py-12 text-center text-slate-400 hidden">
+          <i class="fa-solid fa-box-open text-3xl mb-2"></i>
+          <p>該当する部品が見つかりません</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================== -->
+    <!-- シート2: 月別入出庫・受払表 (1ヶ月単位)           -->
+    <!-- ============================================== -->
+    <div id="sheet-monthly" class="space-y-6 hidden">
+      <!-- 月選択 & コントロールバー -->
+      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div class="flex items-center space-x-3">
+          <label for="monthly-target-month" class="text-sm font-bold text-slate-700 flex items-center">
+            <i class="fa-regular fa-calendar text-indigo-600 mr-2 text-base"></i>対象年月:
+          </label>
+          <input type="month" id="monthly-target-month" onchange="renderMonthlyReport()" class="border border-slate-300 rounded-lg text-sm px-3 py-2 bg-white font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+          <button onclick="setCurrentMonth()" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium px-2.5 py-2 rounded-lg transition border border-slate-200">
+            当月
+          </button>
+        </div>
+        <div class="flex items-center space-x-2 text-xs text-slate-500">
+          <span class="inline-flex items-center"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block mr-1"></span>入庫</span>
+          <span class="inline-flex items-center"><span class="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block mr-1"></span>出庫</span>
+          <span class="inline-flex items-center"><span class="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block mr-1"></span>棚点残</span>
+        </div>
+      </div>
+
+      <!-- 月次サマリーメトリクス -->
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <div class="text-xs font-medium text-slate-500">当月 総入庫数</div>
+          <div class="text-2xl font-bold text-emerald-600 mt-1" id="monthly-total-in">0</div>
+        </div>
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <div class="text-xs font-medium text-slate-500">当月 総出庫数</div>
+          <div class="text-2xl font-bold text-rose-600 mt-1" id="monthly-total-out">0</div>
+        </div>
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <div class="text-xs font-medium text-slate-500">当月 取引件数</div>
+          <div class="text-2xl font-bold text-slate-800 mt-1" id="monthly-total-tx-count">0</div>
+        </div>
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <div class="text-xs font-medium text-slate-500">出庫稼働部品数</div>
+          <div class="text-2xl font-bold text-indigo-600 mt-1" id="monthly-active-parts">0</div>
+        </div>
+      </div>
+
+      <!-- 月次受払集計テーブル -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="p-4 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-slate-50/50">
+          <div>
+            <h3 class="font-bold text-slate-800 text-sm flex items-center">
+              <i class="fa-solid fa-table-cells mr-2 text-indigo-600"></i>月間・日別入出庫マトリクス表
+            </h3>
+            <p class="text-xs text-slate-500 mt-0.5">指定した月の1日〜末日までの日々の入庫(+)・出庫(-)推移および月末残高</p>
+          </div>
+          <div class="flex items-center space-x-2">
+            <span class="text-xs text-slate-500 hidden md:inline">※ 表は横スクロールできます</span>
+            <button onclick="exportMonthlyCSV()" class="text-xs bg-white hover:bg-slate-50 text-slate-700 px-3 py-1.5 rounded-lg border border-slate-200 shadow-sm flex items-center font-medium transition">
+              <i class="fa-solid fa-file-arrow-down text-emerald-600 mr-1.5"></i>この月の日別受払表を出力
+            </button>
+          </div>
+        </div>
+        <div class="overflow-x-auto max-h-[600px] relative">
+          <table class="w-full text-left text-xs text-slate-600 border-collapse">
+            <thead id="monthly-table-head" class="bg-slate-100 text-slate-700 font-semibold uppercase sticky top-0 z-10 shadow-sm">
+              <!-- 動的にヘッダー(日付列)を生成 -->
+            </thead>
+            <tbody id="monthly-table-body" class="divide-y divide-slate-100 font-normal">
+              <!-- 動的レンダリング -->
+            </tbody>
+          </table>
+        </div>
+        <div id="no-monthly-data-msg" class="py-12 text-center text-slate-400 hidden">
+          <i class="fa-solid fa-box-open text-3xl mb-2"></i>
+          <p>表示する部品データがありません</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================== -->
+    <!-- シート3: 入出庫入力・履歴                       -->
+    <!-- ============================================== -->
+    <div id="sheet-transactions" class="space-y-6 hidden">
+      
+      <!-- 入出庫入力フォームカード -->
+      <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+        <h2 class="text-base font-bold text-slate-800 mb-4 flex items-center">
+          <i class="fa-solid fa-pen-to-square text-indigo-600 mr-2"></i>入出庫データ伝票登録
+        </h2>
+        <form id="tx-form" onsubmit="handleTransactionSubmit(event)" class="grid grid-cols-1 md:grid-cols-4 sm:grid-cols-2 gap-4">
+          <!-- 日時 -->
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">取引日</label>
+            <input type="date" id="tx-date" required class="w-full text-sm border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500">
+          </div>
+          <!-- 区分 -->
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">入出庫種別</label>
+            <select id="tx-type" required onchange="updateTransactionStyling()" class="w-full text-sm border border-slate-300 rounded-lg p-2.5 font-semibold focus:ring-2 focus:ring-indigo-500 bg-white">
+              <option value="IN">➕ 入荷 (受入)</option>
+              <option value="OUT">➖ 出荷 (払出)</option>
+              <option value="ADJ">🔄 在庫調整 (棚卸)</option>
+            </select>
+          </div>
+          <!-- 対象部品 -->
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">対象部品</label>
+            <div class="flex gap-2">
+              <select id="tx-part-id" required onchange="displayPartQuickInfo()" class="flex-1 min-w-0 text-sm border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 bg-white">
+                <!-- 動的ロード -->
+              </select>
+              <button type="button" onclick="openQRScanModal('transaction')" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-sm font-medium flex items-center shadow-sm transition whitespace-nowrap" title="QRコード読み取りで部品を選択">
+                <i class="fa-solid fa-qrcode mr-1.5 text-base"></i>QR読取
+              </button>
+            </div>
+            <div id="tx-quick-stock-display" class="text-xs text-slate-500 mt-1">現在庫: -</div>
+          </div>
+          <!-- 数量 -->
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1" id="tx-qty-label">数量</label>
+            <input type="number" id="tx-qty" min="1" step="1" required placeholder="0" class="w-full text-sm border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 font-semibold">
+          </div>
+          <!-- 担当者 -->
+          <div>
+            <label class="block text-xs font-semibold text-slate-600 mb-1">担当者名</label>
+            <input type="text" id="tx-staff" placeholder="例: 佐藤" class="w-full text-sm border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500">
+          </div>
+          <!-- 理由・備考 -->
+          <div class="md:col-span-2 sm:col-span-2">
+            <label class="block text-xs font-semibold text-slate-600 mb-1">備考 / 発注元 / 出荷先</label>
+            <input type="text" id="tx-notes" placeholder="例: Aライン生産用、サプライヤ定期便など" class="w-full text-sm border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500">
+          </div>
+          <!-- 登録ボタン -->
+          <div class="flex items-end">
+            <button type="submit" id="tx-submit-btn" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm py-2.5 px-4 rounded-lg shadow-sm transition flex items-center justify-center">
+              <i class="fa-solid fa-check mr-1.5"></i>この内容で登録
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- 入出庫履歴ログ一覧 -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="p-4 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+          <h3 class="font-bold text-slate-800 text-sm flex items-center">
+            <i class="fa-solid fa-clock-rotate-left mr-2 text-indigo-600"></i>入出庫履歴ログ
+          </h3>
+          <div class="flex items-center space-x-2">
+            <input type="text" id="tx-filter-query" oninput="renderTransactions()" placeholder="部品や備考で履歴絞込..." class="text-xs px-3 py-1.5 border border-slate-300 rounded-lg">
+          </div>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-sm text-slate-600">
+            <thead class="bg-slate-100 text-slate-700 uppercase font-semibold text-xs border-b border-slate-200">
+              <tr>
+                <th class="py-3 px-4">日時</th>
+                <th class="py-3 px-4 text-center">種別</th>
+                <th class="py-3 px-4">品目別名2 (I列)</th>
+                <th class="py-3 px-4 text-right">数量</th>
+                <th class="py-3 px-4">担当</th>
+                <th class="py-3 px-4">備考</th>
+                <th class="py-3 px-4 text-center">取消</th>
+              </tr>
+            </thead>
+            <tbody id="transaction-table-body" class="divide-y divide-slate-100 font-normal">
+              <!-- 動的レンダリング -->
+            </tbody>
+          </table>
+        </div>
+        <div id="no-tx-msg" class="py-10 text-center text-slate-400 hidden">
+          <i class="fa-solid fa-receipt text-3xl mb-2"></i>
+          <p>取引履歴がありません</p>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- 部品登録・編集モーダル -->
+  <div id="part-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden transform transition-all">
+      <div class="bg-indigo-900 px-6 py-4 flex justify-between items-center text-white">
+        <h3 id="modal-title" class="font-bold text-base">新規部品の登録</h3>
+        <button onclick="closePartModal()" class="text-slate-300 hover:text-white transition">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+      <form id="part-form" onsubmit="handlePartFormSubmit(event)" class="p-6 space-y-4">
+        <input type="hidden" id="part-id">
+        <input type="hidden" id="part-code">
+        <input type="hidden" id="part-name">
+        <div>
+          <label class="block text-xs font-semibold text-indigo-700 mb-1 flex items-center">
+            <i class="fa-solid fa-tag mr-1 text-xs"></i>品目別名2 (I列参照コード) <span class="text-rose-500 ml-1">*</span>
+          </label>
+          <input type="text" id="part-alias2" required placeholder="例: 62210-16060-C0" class="w-full text-sm font-mono border-2 border-indigo-200 focus:border-indigo-600 rounded-lg p-2.5 bg-indigo-50/20">
+          <p class="text-[11px] text-slate-400 mt-0.5">※マスター完成品.xlsxの「品目別名2」に該当する品番コード</p>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">単位</label>
+            <input type="text" id="part-unit" placeholder="個, 本, kg" value="個" class="w-full text-sm border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">安全在庫数 (発注点)</label>
+            <input type="number" id="part-safety" min="0" value="10" class="w-full text-sm border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500">
+          </div>
+        </div>
+        <div id="initial-stock-group">
+          <label class="block text-xs font-semibold text-slate-700 mb-1">初期在庫数</label>
+          <input type="number" id="part-initial-stock" min="0" value="0" class="w-full text-sm border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500">
+        </div>
+        <div class="flex justify-end space-x-2 pt-3 border-t border-slate-100">
+          <button type="button" onclick="closePartModal()" class="px-4 py-2 border border-slate-300 text-slate-600 rounded-lg text-sm hover:bg-slate-50 transition">キャンセル</button>
+          <button type="submit" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition shadow-sm">保存する</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- クイック入出庫ポップアップ用モーダル -->
+  <div id="quick-action-modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden p-6 space-y-4">
+      <div class="flex justify-between items-center">
+        <h3 id="quick-modal-title" class="font-bold text-base text-slate-800">クイック入出庫</h3>
+        <button onclick="closeQuickModal()" class="text-slate-400 hover:text-slate-600">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <div id="quick-part-details" class="bg-slate-50 p-3 rounded-lg text-xs space-y-1 text-slate-600 border border-slate-200">
+        <!-- 動的情報 -->
+      </div>
+      <form id="quick-form" onsubmit="handleQuickFormSubmit(event)" class="space-y-3">
+        <input type="hidden" id="quick-part-id">
+        <input type="hidden" id="quick-type">
+        <div>
+          <label id="quick-qty-label" class="block text-xs font-semibold text-slate-700 mb-1">数量</label>
+          <input type="number" id="quick-qty" min="1" required class="w-full text-sm border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 font-bold" autofocus>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">担当者</label>
+          <input type="text" id="quick-staff" placeholder="担当名" class="w-full text-sm border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">備考</label>
+          <input type="text" id="quick-notes" placeholder="作業理由等" class="w-full text-sm border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500">
+        </div>
+        <div class="flex space-x-2 pt-2">
+          <button type="button" onclick="closeQuickModal()" class="w-1/2 py-2 border border-slate-300 text-slate-600 rounded-lg text-sm hover:bg-slate-50">キャンセル</button>
+          <button type="submit" id="quick-confirm-btn" class="w-1/2 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 shadow-sm">実行</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 部品削除確認用カスタムモーダル (ブラウザconfirmブロック対策) -->
+  <div id="delete-confirm-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden p-6 space-y-4">
+      <div class="flex items-center space-x-3 text-rose-600">
+        <div class="w-10 h-10 rounded-full bg-rose-100 flex items-center justify-center">
+          <i class="fa-solid fa-trash-can text-lg"></i>
+        </div>
+        <h3 class="font-bold text-base text-slate-800">部品の削除確認</h3>
+      </div>
+      <div class="text-sm text-slate-600 leading-relaxed">
+        <p>以下の部品を完全に削除しますか？</p>
+        <div class="mt-2 bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-xs">
+          <div>品目別名2 (I列): <strong id="delete-target-alias" class="font-mono text-indigo-700 text-sm"></strong></div>
+        </div>
+        <p class="text-[11px] text-rose-500 mt-2">※関連する入出庫ログも合わせて削除されます。</p>
+      </div>
+      <div class="flex space-x-2 pt-2">
+        <button type="button" onclick="closeDeleteModal()" class="w-1/2 py-2 border border-slate-300 text-slate-600 rounded-lg text-sm hover:bg-slate-50 transition">キャンセル</button>
+        <button type="button" id="confirm-delete-btn" onclick="executeDeletePart()" class="w-1/2 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-sm font-medium transition shadow-sm">削除する</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 入出庫履歴取消確認用カスタムモーダル (ブラウザconfirmブロック対策) -->
+  <div id="revert-confirm-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+    <div class="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden p-6 space-y-4">
+      <div class="flex items-center space-x-3 text-amber-600">
+        <div class="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
+          <i class="fa-solid fa-rotate-left text-lg text-amber-600"></i>
+        </div>
+        <h3 class="font-bold text-base text-slate-800">入出庫の取消確認</h3>
+      </div>
+      <div class="text-sm text-slate-600 leading-relaxed">
+        <p>この取引を取り消して在庫数を元に戻しますか？</p>
+        <div class="mt-2 bg-slate-50 p-2.5 rounded-lg border border-slate-200 text-xs space-y-1">
+          <div>取引日: <span id="revert-target-date" class="font-mono font-semibold text-slate-700"></span></div>
+          <div>品目別名2: <strong id="revert-target-alias" class="font-mono text-indigo-700"></strong></div>
+          <div>種別・数量: <span id="revert-target-qty" class="font-bold"></span></div>
+        </div>
+        <p class="text-[11px] text-amber-600 mt-2">※取り消すと、入庫分は減算、出庫分は加算されて元の在庫数に復元されます。</p>
+      </div>
+      <div class="flex space-x-2 pt-2">
+        <button type="button" onclick="closeRevertModal()" class="w-1/2 py-2 border border-slate-300 text-slate-600 rounded-lg text-sm hover:bg-slate-50 transition">戻る</button>
+        <button type="button" onclick="executeRevertTransaction()" class="w-1/2 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-medium transition shadow-sm">取り消す</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- QRコードスキャン・読取モーダル -->
+  <div id="qr-scan-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all">
+      <div class="bg-indigo-900 px-5 py-3.5 flex justify-between items-center text-white">
+        <h3 class="font-bold text-sm sm:text-base flex items-center">
+          <i class="fa-solid fa-qrcode mr-2 text-indigo-300"></i>QRコード読み取り / 照合
+        </h3>
+        <button onclick="closeQRScanModal()" class="text-slate-300 hover:text-white transition">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <div class="p-5 space-y-4">
+        <!-- カメラビュー領域 -->
+        <div class="relative bg-slate-950 rounded-xl overflow-hidden aspect-video flex items-center justify-center border border-slate-800">
+          <div id="qr-reader" class="w-full h-full"></div>
+          <div id="camera-loading" class="absolute inset-0 flex flex-col items-center justify-center text-slate-400 text-xs space-y-2 pointer-events-none">
+            <i class="fa-solid fa-camera text-2xl text-slate-500"></i>
+            <span>カメラを起動中または手動入力をお待ちしています</span>
+          </div>
+        </div>
+
+        <!-- QR読取結果・手動/バーコードリーダー入力ボックス -->
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">
+            QRスキャンデータ / ハンディリーダー直接入力
+          </label>
+          <div class="flex gap-2">
+            <input type="text" id="qr-raw-input" placeholder="例: A0066241433130C0733382D または改行テキスト" class="flex-1 text-xs font-mono border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500" onkeydown="if(event.key==='Enter'){event.preventDefault();processScannedData(this.value);}">
+            <button type="button" onclick="processScannedData(document.getElementById('qr-raw-input').value)" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3 rounded-lg font-medium transition">
+              照合
+            </button>
+          </div>
+          <p class="text-[11px] text-slate-500 mt-1">
+            ※かんばんQRなどの複数行テキスト（4行目品番）や、接頭辞付きコード（`A006...`）からハイフンなし品番を自動抽出して照合します。
+          </p>
+        </div>
+
+        <!-- 抽出結果プレビュー -->
+        <div id="qr-matched-result" class="hidden bg-indigo-50 border border-indigo-200 rounded-xl p-3.5 space-y-2">
+          <div class="flex justify-between items-start">
+            <span class="text-xs font-semibold text-indigo-900">認識結果</span>
+            <span id="qr-match-status" class="text-[11px] px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-700">一致</span>
+          </div>
+          <div class="text-xs text-slate-700">
+            <div>抽出品番: <span id="qr-parsed-code" class="font-mono font-bold text-indigo-700"></span></div>
+            <div>品目別名2 (I列): <span id="qr-matched-alias" class="font-mono font-bold text-slate-900 text-sm"></span></div>
+            <div>現在庫数: <span id="qr-matched-stock" class="font-bold text-slate-800"></span></div>
+          </div>
+          <!-- 一致時は自動選択するため手動ボタンは削除 -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- JavaScript -->
+  <script>
+    // 初期データ（社内品番・部品名称を排除し、品目別名2を主軸に設定）
+    const DEFAULT_PARTS = [
+      { id: "P001", alias2: "62210-16060-C0", code: "62210-16060-C0", name: "62210-16060-C0", category: "完成品", location: "A-01", safety: 10, unit: "個", currentQty: 0 }
+    ];
+
+    const DEFAULT_TRANSACTIONS = [];
+
+    // LocalStorageから取得、なければ初期データ
+    let parts = JSON.parse(localStorage.getItem('parts_inventory_data')) || DEFAULT_PARTS;
+    let transactions = JSON.parse(localStorage.getItem('parts_transactions_data')) || DEFAULT_TRANSACTIONS;
+
+    // 不正なダミーサンプル品番（90467-10161 や 62210-46030-C0、推測登録品）をLocalStorageから自動除去
+    const DUMMY_ALIASES = ['90467-10161', '62210-46030-C0', '62220-16060-C0', '62211-16060-C0', '62221-16060-C0'];
+    parts = parts.filter(p => !DUMMY_ALIASES.includes(p.alias2) && !DUMMY_ALIASES.includes(p.code));
+    if (parts.length === 0) {
+      parts = JSON.parse(JSON.stringify(DEFAULT_PARTS));
+    }
+
+    // 不要になったダミー取引の除去
+    transactions = transactions.filter(t => parts.some(p => p.id === t.partId));
+
+    // alias2の補完
+    parts.forEach(p => {
+      if (!p.alias2) p.alias2 = p.code || p.id;
+    });
+
+    function resetToValidMasterData() {
+      if (!window.confirm("架空のサンプルデータをクリアし、正規データ（62210-16060-C0 のみ）にリセットしますか？\n※「マスターCSV取込」からマスター完成品.xlsxのデータを取り込めます。")) return;
+      parts = JSON.parse(JSON.stringify(DEFAULT_PARTS));
+      transactions = [];
+      saveData();
+      renderInventory();
+      if (document.getElementById('sheet-monthly') && !document.getElementById('sheet-monthly').classList.contains('hidden')) {
+        renderMonthlyReport();
+      }
+      showToast("実データ仕様にリセットしました");
+    }
+
+    function saveData() {
+      localStorage.setItem('parts_inventory_data', JSON.stringify(parts));
+      localStorage.setItem('parts_transactions_data', JSON.stringify(transactions));
+    }
+
+    // 今日の日付をセット
+    function setTodayDate() {
+      const today = new Date().toISOString().split('T')[0];
+      const dateInput = document.getElementById('tx-date');
+      if (dateInput) dateInput.value = today;
+
+      const currentYearMonth = today.slice(0, 7);
+      const monthlyInput = document.getElementById('monthly-target-month');
+      if (monthlyInput && !monthlyInput.value) {
+        monthlyInput.value = currentYearMonth;
+      }
+    }
+
+    function setCurrentMonth() {
+      const today = new Date().toISOString().split('T')[0].slice(0, 7);
+      document.getElementById('monthly-target-month').value = today;
+      renderMonthlyReport();
+    }
+
+    // タブ切り替え
+    function switchTab(tab) {
+      const invBtn = document.getElementById('tab-inventory-btn');
+      const monthlyBtn = document.getElementById('tab-monthly-btn');
+      const txBtn = document.getElementById('tab-transactions-btn');
+
+      const invSheet = document.getElementById('sheet-inventory');
+      const monthlySheet = document.getElementById('sheet-monthly');
+      const txSheet = document.getElementById('sheet-transactions');
+
+      const activeClass = "py-3.5 px-4 font-semibold text-sm border-b-2 border-indigo-600 text-indigo-600 flex items-center transition focus:outline-none";
+      const inactiveClass = "py-3.5 px-4 font-medium text-sm border-b-2 border-transparent text-slate-500 hover:text-slate-800 flex items-center transition focus:outline-none";
+
+      invBtn.className = inactiveClass;
+      monthlyBtn.className = inactiveClass;
+      txBtn.className = inactiveClass;
+
+      invSheet.classList.add('hidden');
+      monthlySheet.classList.add('hidden');
+      txSheet.classList.add('hidden');
+
+      if (tab === 'inventory') {
+        invBtn.className = activeClass;
+        invSheet.classList.remove('hidden');
+        renderInventory();
+      } else if (tab === 'monthly') {
+        monthlyBtn.className = activeClass;
+        monthlySheet.classList.remove('hidden');
+        renderMonthlyReport();
+      } else {
+        txBtn.className = activeClass;
+        txSheet.classList.remove('hidden');
+        populateTransactionPartSelect();
+        renderTransactions();
+      }
+    }
+
+    // トースト表示
+    function showToast(msg, isSuccess = true) {
+      const toast = document.getElementById('toast');
+      const msgSpan = document.getElementById('toast-msg');
+      const iconSpan = document.getElementById('toast-icon');
+
+      msgSpan.textContent = msg;
+      iconSpan.className = isSuccess ? 'fa-solid fa-circle-check text-emerald-400 text-lg' : 'fa-solid fa-triangle-exclamation text-rose-400 text-lg';
+
+      toast.classList.remove('opacity-0', 'pointer-events-none');
+      toast.classList.add('opacity-100');
+
+      setTimeout(() => {
+        toast.classList.remove('opacity-100');
+        toast.classList.add('opacity-0', 'pointer-events-none');
+      }, 2500);
+    }
+
+    // ステータスカードクリックによる絞り込み
+    function filterByStockStatus(status) {
+      const statusFilter = document.getElementById('inv-status-filter');
+      if (statusFilter) {
+        statusFilter.value = status;
+        renderInventory();
+      }
+    }
+
+    // ============================
+    // シート1: 部品在庫一覧の描画・更新
+    // ============================
+    function renderInventory() {
+      const tbody = document.getElementById('inventory-table-body');
+      if (!tbody) return;
+
+      const searchVal = (document.getElementById('inv-search')?.value || '').toLowerCase().trim();
+      const statusFilter = document.getElementById('inv-status-filter')?.value || 'ALL';
+      const noInvMsg = document.getElementById('no-inventory-msg');
+
+      // サマリー計算用
+      let totalQty = 0;
+      let lowStockCount = 0;
+      let outStockCount = 0;
+
+      parts.forEach(p => {
+        totalQty += Number(p.currentQty) || 0;
+        if (p.currentQty <= 0) {
+          outStockCount++;
+        } else if (p.currentQty <= p.safety) {
+          lowStockCount++;
+        }
+      });
+
+      const totalPartsEl = document.getElementById('stat-total-parts');
+      const totalQtyEl = document.getElementById('stat-total-qty');
+      const lowStockEl = document.getElementById('stat-low-stock');
+      const outStockEl = document.getElementById('stat-out-of-stock');
+      const badgeWarningEl = document.getElementById('badge-warning-count');
+
+      if (totalPartsEl) totalPartsEl.textContent = parts.length.toLocaleString();
+      if (totalQtyEl) totalQtyEl.textContent = totalQty.toLocaleString();
+      if (lowStockEl) lowStockEl.textContent = lowStockCount.toLocaleString();
+      if (outStockEl) outStockEl.textContent = outStockCount.toLocaleString();
+
+      if (badgeWarningEl) {
+        const totalAlerts = lowStockCount + outStockCount;
+        if (totalAlerts > 0) {
+          badgeWarningEl.textContent = totalAlerts;
+          badgeWarningEl.classList.remove('hidden');
+        } else {
+          badgeWarningEl.classList.add('hidden');
+        }
+      }
+
+      // 絞り込み
+      let filtered = parts.filter(p => {
+        const alias = String(p.alias2 || p.code || '').toLowerCase();
+        const matchesSearch = !searchVal || alias.includes(searchVal);
+
+        let matchesStatus = true;
+        if (statusFilter === 'OUT') {
+          matchesStatus = p.currentQty <= 0;
+        } else if (statusFilter === 'WARNING') {
+          matchesStatus = p.currentQty <= p.safety;
+        } else if (statusFilter === 'NORMAL') {
+          matchesStatus = p.currentQty > p.safety;
+        }
+
+        return matchesSearch && matchesStatus;
+      });
+
+      // 品目別名2（品番）を昇順ソート
+      filtered.sort((a, b) => {
+        const aliasA = String(a.alias2 || a.code || '');
+        const aliasB = String(b.alias2 || b.code || '');
+        return aliasA.localeCompare(aliasB, undefined, { numeric: true, sensitivity: 'base' });
+      });
+
+      tbody.innerHTML = '';
+      if (filtered.length === 0) {
+        if (noInvMsg) noInvMsg.classList.remove('hidden');
+        return;
+      }
+      if (noInvMsg) noInvMsg.classList.add('hidden');
+
+      filtered.forEach(part => {
+        const tr = document.createElement('tr');
+        tr.className = "hover:bg-slate-50/80 transition border-b border-slate-100";
+
+        // 状態 & 充足率の判定
+        let statusBadge = '';
+        let ratio = part.safety > 0 ? Math.round((part.currentQty / part.safety) * 100) : 100;
+        let barColor = 'bg-emerald-500';
+
+        if (part.currentQty <= 0) {
+          statusBadge = '<span class="bg-rose-100 text-rose-700 font-bold px-2.5 py-1 rounded-full text-xs">在庫切</span>';
+          barColor = 'bg-rose-500';
+          ratio = 0;
+        } else if (part.currentQty <= part.safety) {
+          statusBadge = '<span class="bg-amber-100 text-amber-700 font-bold px-2.5 py-1 rounded-full text-xs">要補充</span>';
+          barColor = 'bg-amber-500';
+        } else {
+          statusBadge = '<span class="bg-emerald-100 text-emerald-700 font-semibold px-2.5 py-1 rounded-full text-xs">適正</span>';
+        }
+
+        const barWidth = Math.min(Math.max(ratio, 0), 100);
+
+        tr.innerHTML = `
+          <td class="py-3 px-4 font-mono font-bold text-indigo-700 text-sm">
+            ${escapeHtml(part.alias2 || part.code)}
+          </td>
+          <td class="py-3 px-4 text-right">
+            <div class="flex items-center justify-end space-x-1.5 font-mono">
+              <span class="text-base font-bold text-slate-900">${Number(part.currentQty).toLocaleString()}</span>
+              <span class="text-xs text-slate-400">/ ${Number(part.safety).toLocaleString()} ${escapeHtml(part.unit || '個')}</span>
+            </div>
+          </td>
+          <td class="py-3 px-4 text-center">
+            <div class="w-24 mx-auto">
+              <div class="flex justify-between text-[10px] text-slate-400 mb-0.5">
+                <span>充足率</span>
+                <span class="font-bold text-slate-600">${ratio}%</span>
+              </div>
+              <div class="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden">
+                <div class="${barColor} h-1.5 rounded-full" style="width: ${barWidth}%"></div>
+              </div>
+            </div>
+          </td>
+          <td class="py-3 px-4 text-center">
+            ${statusBadge}
+          </td>
+          <td class="py-3 px-4 text-center">
+            <div class="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm">
+              <button onclick="openQuickModal('${part.id}', 'IN')" class="px-2 py-1 text-xs font-semibold text-emerald-600 hover:bg-emerald-50 rounded transition" title="クイック入荷">
+                <i class="fa-solid fa-plus mr-0.5"></i>入庫
+              </button>
+              <span class="w-[1px] bg-slate-200 my-0.5"></span>
+              <button onclick="openQuickModal('${part.id}', 'OUT')" class="px-2 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50 rounded transition" title="クイック出荷">
+                <i class="fa-solid fa-minus mr-0.5"></i>出庫
+              </button>
+            </div>
+          </td>
+          <td class="py-3 px-4 text-center">
+            <div class="flex items-center justify-center space-x-2">
+              <button onclick="openEditPartModal('${part.id}')" class="text-slate-400 hover:text-indigo-600 p-1.5 rounded transition" title="編集">
+                <i class="fa-solid fa-pen-to-square"></i>
+              </button>
+              <button onclick="confirmDeletePart('${part.id}')" class="text-slate-400 hover:text-rose-600 p-1.5 rounded transition" title="削除">
+                <i class="fa-solid fa-trash-can"></i>
+              </button>
+            </div>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    // ============================
+    // 削除確認カスタムモーダル処理
+    // ============================
+    let deleteTargetPartId = null;
+
+    function confirmDeletePart(partId) {
+      const part = parts.find(p => p.id === partId);
+      if (!part) return;
+
+      deleteTargetPartId = partId;
+      document.getElementById('delete-target-alias').textContent = part.alias2 || part.code || '-';
+      document.getElementById('delete-confirm-modal').classList.remove('hidden');
+    }
+
+    function closeDeleteModal() {
+      deleteTargetPartId = null;
+      document.getElementById('delete-confirm-modal').classList.add('hidden');
+    }
+
+    function executeDeletePart() {
+      if (!deleteTargetPartId) return;
+
+      // 該当部品の削除
+      parts = parts.filter(p => p.id !== deleteTargetPartId);
+      // 関連取引ログのクリーンアップ
+      transactions = transactions.filter(t => t.partId !== deleteTargetPartId);
+
+      saveData();
+      closeDeleteModal();
+      renderInventory();
+      if (document.getElementById('sheet-monthly') && !document.getElementById('sheet-monthly').classList.contains('hidden')) {
+        renderMonthlyReport();
+      }
+      showToast('部品を削除しました');
+    }
+
+    // ============================
+    // QRコード読み取り & 照合処理
+    // ============================
+    let html5QrCode = null;
+    let qrTargetMode = 'inventory'; // 'inventory' or 'transaction'
+
+    function openQRScanModal(targetMode = 'inventory') {
+      qrTargetMode = targetMode;
+      document.getElementById('qr-raw-input').value = '';
+      document.getElementById('qr-matched-result').classList.add('hidden');
+      document.getElementById('qr-scan-modal').classList.remove('hidden');
+
+      // html5-qrcode のカメラ起動
+      if (typeof Html5Qrcode !== 'undefined') {
+        if (!html5QrCode) {
+          html5QrCode = new Html5Qrcode("qr-reader");
+        }
+        const config = { fps: 10, qrbox: { width: 220, height: 220 } };
+        html5QrCode.start(
+          { facingMode: "environment" },
+          config,
+          (decodedText) => {
+            processScannedData(decodedText);
+          },
+          () => {
+            // スキャン待ち（無視）
+          }
+        ).catch(err => {
+          console.warn("Camera start failed/permission denied:", err);
+          const camLoading = document.getElementById('camera-loading');
+          if (camLoading) {
+            camLoading.innerHTML = '<span class="text-rose-400 text-xs text-center px-4">カメラを起動できませんでした。<br>下の入力欄またはハンディリーダーから直接入力してください。</span>';
+          }
+        });
+      }
+    }
+
+    function closeQRScanModal() {
+      if (html5QrCode && html5QrCode.isScanning) {
+        html5QrCode.stop().then(() => {
+          document.getElementById('qr-scan-modal').classList.add('hidden');
+        }).catch(() => {
+          document.getElementById('qr-scan-modal').classList.add('hidden');
+        });
+      } else {
+        document.getElementById('qr-scan-modal').classList.add('hidden');
+      }
+    }
+
+    // QRテキストから品番を抽出・照合
+    function processScannedData(rawText) {
+      if (!rawText) return;
+      const text = String(rawText).trim();
+      document.getElementById('qr-raw-input').value = text;
+
+      // 1. 改行コードがある場合: 4行目に品番表記（ハイフンなし等）があるか確認
+      const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+      let candidates = [];
+
+      if (lines.length >= 4) {
+        candidates.push(lines[3]); // 4行目
+      }
+
+      // 2. 接頭辞付き（A0066241433130C0733382D 等）の抽出
+      // 4文字目以降の文字列、あるいは全文字列からハイフンなし品番を推測
+      if (text.length >= 10) {
+        // 例: A006 から始まる場合はインデックス4以降
+        const sub4 = text.substring(4);
+        candidates.push(sub4);
+        candidates.push(text);
+      } else {
+        candidates.push(text);
+      }
+      lines.forEach(l => candidates.push(l));
+
+      // マスターと正規化照合（英数字のみにして大小文字無視で比較）
+      let matchedPart = null;
+      let matchedCandidate = '';
+
+      for (let cand of candidates) {
+        const cleanCand = cand.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+        if (!cleanCand) continue;
+
+        matchedPart = parts.find(p => {
+          const cleanAlias = (p.alias2 || p.code || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+          return cleanAlias.length > 0 && (cleanCand.includes(cleanAlias) || cleanAlias.includes(cleanCand));
+        });
+
+        if (matchedPart) {
+          matchedCandidate = cand;
+          break;
+        }
+      }
+
+      const resBox = document.getElementById('qr-matched-result');
+      const parsedEl = document.getElementById('qr-parsed-code');
+      const aliasEl = document.getElementById('qr-matched-alias');
+      const stockEl = document.getElementById('qr-matched-stock');
+      const statusEl = document.getElementById('qr-match-status');
+
+      if (matchedPart) {
+        parsedEl.textContent = matchedCandidate || text;
+        aliasEl.textContent = matchedPart.alias2 || matchedPart.code;
+        stockEl.textContent = `${matchedPart.currentQty} ${matchedPart.unit || '個'}`;
+        statusEl.className = "text-[11px] px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-700";
+        statusEl.textContent = "一致";
+        resBox.classList.remove('hidden');
+
+        // 一致した場合は自動で閉じて即座に反映
+        setTimeout(() => {
+          closeQRScanModal();
+          if (qrTargetMode === 'inventory') {
+            const searchInput = document.getElementById('inv-search');
+            if (searchInput) {
+              searchInput.value = matchedPart.alias2 || matchedPart.code;
+              renderInventory();
+            }
+          } else if (qrTargetMode === 'transaction') {
+            const txSelect = document.getElementById('tx-part-id');
+            if (txSelect) {
+              txSelect.value = matchedPart.id;
+              displayPartQuickInfo();
+            }
+          }
+          showToast(`対象部品を反映しました: ${matchedPart.alias2 || matchedPart.code}`);
+        }, 500);
+
+      } else {
+        parsedEl.textContent = text;
+        aliasEl.textContent = '未登録の部品';
+        stockEl.textContent = '-';
+        statusEl.className = "text-[11px] px-2 py-0.5 rounded-full font-bold bg-rose-100 text-rose-700";
+        statusEl.textContent = "未検出";
+        resBox.classList.remove('hidden');
+      }
+    }
+
+    // ============================
+    // シート2: 月別受払表の集計・描画 (日別マトリクス・行分割表示)
+    // ============================
+    function renderMonthlyReport() {
+      const targetMonth = document.getElementById('monthly-target-month').value;
+      if (!targetMonth) return;
+
+      const thead = document.getElementById('monthly-table-head');
+      const tbody = document.getElementById('monthly-table-body');
+      const noDataMsg = document.getElementById('no-monthly-data-msg');
+
+      const [yearStr, monthStr] = targetMonth.split('-');
+      const year = parseInt(yearStr, 10);
+      const month = parseInt(monthStr, 10);
+      const daysInMonth = new Date(year, month, 0).getDate();
+
+      const dayNames = ['日', '月', '火', '水', '木', '金', '土'];
+
+      // テーブルヘッダーの生成（固定列: 品目別名2 + 区分 + 単位 + 前月繰越）
+      let headHtml = `<tr>
+        <th class="py-3 px-3 min-w-[170px] sticky left-0 z-20 bg-slate-100 border-r border-slate-300 text-indigo-900 font-bold">品目別名2 (I列)</th>
+        <th class="py-3 px-2 text-center min-w-[55px] sticky left-[170px] z-20 bg-slate-100 border-r border-slate-300 text-slate-700 font-bold">区分</th>
+        <th class="py-3 px-2 text-center min-w-[45px] bg-slate-100 border-r border-slate-200">単位</th>
+        <th class="py-3 px-2.5 text-right min-w-[70px] bg-slate-200/70 border-r border-slate-300">前月繰越</th>`;
+
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dateObj = new Date(year, month - 1, d);
+        const dayOfWeek = dateObj.getDay();
+        let bgStyle = 'bg-slate-100';
+        let textStyle = 'text-slate-700';
+
+        if (dayOfWeek === 0) {
+          bgStyle = 'bg-rose-50';
+          textStyle = 'text-rose-600 font-bold';
+        } else if (dayOfWeek === 6) {
+          bgStyle = 'bg-blue-50';
+          textStyle = 'text-blue-600 font-bold';
+        }
+
+        headHtml += `
+          <th class="py-2 px-1 text-center min-w-[50px] ${bgStyle} border-r border-slate-200">
+            <div class="${textStyle} text-xs font-mono font-bold">${d}</div>
+            <div class="text-[10px] text-slate-400 font-normal">${dayNames[dayOfWeek]}</div>
+          </th>`;
+      }
+
+      headHtml += `
+        <th class="py-3 px-3 text-right min-w-[80px] text-slate-800 bg-slate-100 border-r border-slate-300">当月計</th>
+        <th class="py-3 px-3 text-right min-w-[85px] font-bold text-indigo-900 bg-indigo-50/80">月末在庫</th>
+      </tr>`;
+      thead.innerHTML = headHtml;
+
+      tbody.innerHTML = '';
+      if (parts.length === 0) {
+        noDataMsg.classList.remove('hidden');
+        return;
+      }
+      noDataMsg.classList.add('hidden');
+
+      let totalMonthlyIn = 0;
+      let totalMonthlyOut = 0;
+      let totalMonthlyTx = 0;
+      let activePartIds = new Set();
+
+      // 品目別名2（品番）を昇順でソートして集計・描画
+      const sortedMonthlyParts = [...parts].sort((a, b) => {
+        const aliasA = String(a.alias2 || a.code || '');
+        const aliasB = String(b.alias2 || b.code || '');
+        return aliasA.localeCompare(aliasB, undefined, { numeric: true, sensitivity: 'base' });
+      });
+
+      sortedMonthlyParts.forEach(part => {
+        const monthTx = transactions.filter(t => t.partId === part.id && t.date.startsWith(targetMonth));
+        
+        const dailyMap = {};
+        for (let d = 1; d <= daysInMonth; d++) {
+          dailyMap[d] = { in: 0, out: 0, adj: 0 };
+        }
+
+        let sumIn = 0;
+        let sumOut = 0;
+        let sumAdj = 0;
+
+        monthTx.forEach(t => {
+          totalMonthlyTx++;
+          const dayNum = parseInt(t.date.split('-')[2], 10);
+          if (t.type === 'IN') {
+            sumIn += Number(t.qty);
+            if (dailyMap[dayNum]) dailyMap[dayNum].in += Number(t.qty);
+          } else if (t.type === 'OUT') {
+            sumOut += Number(t.qty);
+            activePartIds.add(part.id);
+            if (dailyMap[dayNum]) dailyMap[dayNum].out += Number(t.qty);
+          } else if (t.type === 'ADJ') {
+            sumAdj += Number(t.qty);
+            if (dailyMap[dayNum]) dailyMap[dayNum].adj += Number(t.qty);
+          }
+        });
+
+        totalMonthlyIn += sumIn;
+        totalMonthlyOut += sumOut;
+
+        const afterTx = transactions.filter(t => t.partId === part.id && t.date.slice(0, 7) > targetMonth);
+        let qtyAfterMonth = 0;
+        afterTx.forEach(t => {
+          if (t.type === 'IN') qtyAfterMonth += t.qty;
+          else if (t.type === 'OUT') qtyAfterMonth -= t.qty;
+          else if (t.type === 'ADJ') qtyAfterMonth += t.qty;
+        });
+
+        const endOfMonthQty = part.currentQty - qtyAfterMonth;
+        const startOfMonthQty = endOfMonthQty - sumIn + sumOut - sumAdj;
+
+        const rowSpan = sumAdj !== 0 ? 3 : 2;
+
+        // 共通セル (左側固定列および繰越・月末在庫)
+        const partCell = `
+          <td rowspan="${rowSpan}" class="py-2 px-3 font-mono font-bold text-indigo-700 sticky left-0 z-10 bg-white border-r border-slate-300 text-sm align-middle shadow-sm">
+            ${escapeHtml(part.alias2 || part.code)}
+          </td>
+        `;
+        const unitCell = `
+          <td rowspan="${rowSpan}" class="py-2 px-2 text-center text-slate-500 border-r border-slate-200 font-medium align-middle">
+            ${escapeHtml(part.unit || '個')}
+          </td>
+        `;
+        const startQtyCell = `
+          <td rowspan="${rowSpan}" class="py-2 px-2.5 text-right font-mono bg-slate-50 border-r border-slate-300 font-bold text-sm text-slate-700 align-middle">
+            ${startOfMonthQty.toLocaleString()}
+          </td>
+        `;
+        const endQtyCell = `
+          <td rowspan="${rowSpan}" class="py-2 px-3 text-right font-mono font-bold text-base text-indigo-950 bg-indigo-50/70 align-middle border-b-2 border-slate-300">
+            ${endOfMonthQty.toLocaleString()}
+          </td>
+        `;
+
+        // 1. 入庫行
+        const trIn = document.createElement('tr');
+        trIn.className = "hover:bg-slate-50/80 transition border-t border-slate-200";
+        let inHtml = partCell;
+        inHtml += `
+          <td class="py-1 px-1.5 text-center sticky left-[170px] z-10 bg-emerald-50 text-emerald-800 font-bold text-xs border-r border-slate-300 whitespace-nowrap">
+            入庫
+          </td>
+        `;
+        inHtml += unitCell;
+        inHtml += startQtyCell;
+
+        for (let d = 1; d <= daysInMonth; d++) {
+          const dateObj = new Date(year, month - 1, d);
+          const dayOfWeek = dateObj.getDay();
+          const dIn = dailyMap[d].in;
+          let colBg = '';
+          if (dayOfWeek === 0) colBg = 'bg-rose-50/20';
+          else if (dayOfWeek === 6) colBg = 'bg-blue-50/20';
+
+          inHtml += `
+            <td class="p-0.5 text-center font-mono border-r border-slate-200 ${colBg} h-8 align-middle">
+              ${dIn > 0 
+                ? `<span class="inline-block w-full text-base sm:text-lg font-mono font-black text-emerald-600 leading-none tracking-tighter" title="入庫: ${dIn}">+${dIn}</span>`
+                : `<span class="text-slate-200 text-xs">-</span>`
+              }
+            </td>
+          `;
+        }
+
+        inHtml += `
+          <td class="py-1 px-2 text-right font-mono font-bold text-sm text-emerald-700 bg-emerald-50/40 border-r border-slate-300">
+            ${sumIn > 0 ? '+' + sumIn.toLocaleString() : '-'}
+          </td>
+        `;
+        inHtml += endQtyCell;
+        trIn.innerHTML = inHtml;
+        tbody.appendChild(trIn);
+
+        // 2. 出庫行
+        const trOut = document.createElement('tr');
+        trOut.className = `hover:bg-slate-50/80 transition ${sumAdj === 0 ? 'border-b-2 border-slate-300' : 'border-b border-slate-100'}`;
+        let outHtml = `
+          <td class="py-1 px-1.5 text-center sticky left-[170px] z-10 bg-rose-50 text-rose-800 font-bold text-xs border-r border-slate-300 whitespace-nowrap">
+            出庫
+          </td>
+        `;
+
+        for (let d = 1; d <= daysInMonth; d++) {
+          const dateObj = new Date(year, month - 1, d);
+          const dayOfWeek = dateObj.getDay();
+          const dOut = dailyMap[d].out;
+          let colBg = '';
+          if (dayOfWeek === 0) colBg = 'bg-rose-50/20';
+          else if (dayOfWeek === 6) colBg = 'bg-blue-50/20';
+
+          outHtml += `
+            <td class="p-0.5 text-center font-mono border-r border-slate-200 ${colBg} h-8 align-middle">
+              ${dOut > 0 
+                ? `<span class="inline-block w-full text-base sm:text-lg font-mono font-black text-rose-600 leading-none tracking-tighter" title="出庫: ${dOut}">-${dOut}</span>`
+                : `<span class="text-slate-200 text-xs">-</span>`
+              }
+            </td>
+          `;
+        }
+
+        outHtml += `
+          <td class="py-1 px-2 text-right font-mono font-bold text-sm text-rose-700 bg-rose-50/40 border-r border-slate-300">
+            ${sumOut > 0 ? '-' + sumOut.toLocaleString() : '-'}
+          </td>
+        `;
+        trOut.innerHTML = outHtml;
+        tbody.appendChild(trOut);
+
+        // 3. 調整行（棚卸調整実績がある場合のみ追加）
+        if (sumAdj !== 0) {
+          const trAdj = document.createElement('tr');
+          trAdj.className = "hover:bg-slate-50/80 transition border-b-2 border-slate-300";
+          let adjHtml = `
+            <td class="py-1 px-1.5 text-center sticky left-[170px] z-10 bg-blue-50 text-blue-800 font-bold text-xs border-r border-slate-300 whitespace-nowrap">
+              調整
+            </td>
+          `;
+          for (let d = 1; d <= daysInMonth; d++) {
+            const dateObj = new Date(year, month - 1, d);
+            const dayOfWeek = dateObj.getDay();
+            const dAdj = dailyMap[d].adj;
+            let colBg = '';
+            if (dayOfWeek === 0) colBg = 'bg-rose-50/20';
+            else if (dayOfWeek === 6) colBg = 'bg-blue-50/20';
+
+            adjHtml += `
+              <td class="p-0.5 text-center font-mono border-r border-slate-200 ${colBg} h-8 align-middle">
+                ${dAdj !== 0 
+                  ? `<span class="inline-block w-full text-xs sm:text-sm font-mono font-bold text-blue-600 leading-none" title="調整: ${dAdj}">${dAdj > 0 ? '+' : ''}${dAdj}</span>`
+                  : `<span class="text-slate-200 text-xs">-</span>`
+                }
+              </td>
+            `;
+          }
+          adjHtml += `
+            <td class="py-1 px-2 text-right font-mono font-bold text-xs sm:text-sm text-blue-700 bg-blue-50/30 border-r border-slate-300">
+              ${sumAdj > 0 ? '+' + sumAdj.toLocaleString() : sumAdj.toLocaleString()}
+            </td>
+          `;
+          trAdj.innerHTML = adjHtml;
+          tbody.appendChild(trAdj);
+        }
+      });
+
+      document.getElementById('monthly-total-in').textContent = totalMonthlyIn.toLocaleString();
+      document.getElementById('monthly-total-out').textContent = totalMonthlyOut.toLocaleString();
+      document.getElementById('monthly-total-tx-count').textContent = totalMonthlyTx.toLocaleString();
+      document.getElementById('monthly-active-parts').textContent = activePartIds.size.toLocaleString();
+    }
+
+    // 月別日別受払表のCSVエクスポート（画面のマトリクス表と同じ行分け構造で出力）
+    function exportMonthlyCSV() {
+      const targetMonth = document.getElementById('monthly-target-month').value;
+      if (!targetMonth) return;
+
+      const [yearStr, monthStr] = targetMonth.split('-');
+      const year = parseInt(yearStr, 10);
+      const month = parseInt(monthStr, 10);
+      const daysInMonth = new Date(year, month, 0).getDate();
+
+      let csv = "\uFEFF"; // Excel用UTF-8 BOM
+      csv += `=== ${targetMonth} 月間・日別部品在庫受払表 ===\n`;
+
+      // 画面マトリクス表と同じヘッダー行を作成
+      let header = "品目別名2(I列),区分,単位,前月繰越";
+      for (let d = 1; d <= daysInMonth; d++) {
+        header += `,${d}日`;
+      }
+      header += ",当月計,月末在庫\n";
+      csv += header;
+
+      // 画面と同様に昇順ソートして出力
+      const sortedMonthlyParts = [...parts].sort((a, b) => {
+        const aliasA = String(a.alias2 || a.code || '');
+        const aliasB = String(b.alias2 || b.code || '');
+        return aliasA.localeCompare(aliasB, undefined, { numeric: true, sensitivity: 'base' });
+      });
+
+      sortedMonthlyParts.forEach(part => {
+        const monthTx = transactions.filter(t => t.partId === part.id && t.date.startsWith(targetMonth));
+        const dailyMap = {};
+        for (let d = 1; d <= daysInMonth; d++) {
+          dailyMap[d] = { in: 0, out: 0, adj: 0 };
+        }
+
+        let sumIn = 0, sumOut = 0, sumAdj = 0;
+        monthTx.forEach(t => {
+          const dayNum = parseInt(t.date.split('-')[2], 10);
+          if (t.type === 'IN') {
+            sumIn += Number(t.qty);
+            if (dailyMap[dayNum]) dailyMap[dayNum].in += Number(t.qty);
+          } else if (t.type === 'OUT') {
+            sumOut += Number(t.qty);
+            if (dailyMap[dayNum]) dailyMap[dayNum].out += Number(t.qty);
+          } else if (t.type === 'ADJ') {
+            sumAdj += Number(t.qty);
+            if (dailyMap[dayNum]) dailyMap[dayNum].adj += Number(t.qty);
+          }
+        });
+
+        const afterTx = transactions.filter(t => t.partId === part.id && t.date.slice(0, 7) > targetMonth);
+        let qtyAfterMonth = 0;
+        afterTx.forEach(t => {
+          if (t.type === 'IN') qtyAfterMonth += t.qty;
+          else if (t.type === 'OUT') qtyAfterMonth -= t.qty;
+          else if (t.type === 'ADJ') qtyAfterMonth += t.qty;
+        });
+
+        const endOfMonthQty = part.currentQty - qtyAfterMonth;
+        const startOfMonthQty = endOfMonthQty - sumIn + sumOut - sumAdj;
+        const aliasStr = `"${part.alias2 || part.code}"`;
+        const unitStr = `"${part.unit || '個'}"`;
+
+        // 1. 入庫行
+        let inRow = `${aliasStr},"入庫",${unitStr},${startOfMonthQty}`;
+        for (let d = 1; d <= daysInMonth; d++) {
+          const dIn = dailyMap[d].in || 0;
+          inRow += `,${dIn > 0 ? dIn : ''}`;
+        }
+        inRow += `,${sumIn > 0 ? sumIn : 0},${endOfMonthQty}\n`;
+        csv += inRow;
+
+        // 2. 出庫行
+        let outRow = `${aliasStr},"出庫",${unitStr},""`;
+        for (let d = 1; d <= daysInMonth; d++) {
+          const dOut = dailyMap[d].out || 0;
+          outRow += `,${dOut > 0 ? dOut : ''}`;
+        }
+        outRow += `,${sumOut > 0 ? sumOut : 0},""\n`;
+        csv += outRow;
+
+        // 3. 調整行（棚卸調整がある場合）
+        if (sumAdj !== 0) {
+          let adjRow = `${aliasStr},"調整",${unitStr},""`;
+          for (let d = 1; d <= daysInMonth; d++) {
+            const dAdj = dailyMap[d].adj || 0;
+            adjRow += `,${dAdj !== 0 ? dAdj : ''}`;
+          }
+          adjRow += `,${sumAdj},""\n`;
+          csv += adjRow;
+        }
+      });
+
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `月間日別在庫受払表_${targetMonth}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      showToast(`${targetMonth}の日別受払表CSVを出力しました`);
+    }
+
+    // ============================
+    // 部品新規登録・編集モーダル処理
+    function openPartModal() {
+      document.getElementById('modal-title').textContent = '新規部品の登録';
+      document.getElementById('part-id').value = '';
+      document.getElementById('part-alias2').value = '';
+      document.getElementById('part-code').value = '';
+      document.getElementById('part-name').value = '';
+      document.getElementById('part-unit').value = '個';
+      document.getElementById('part-safety').value = '10';
+      document.getElementById('part-initial-stock').value = '0';
+      document.getElementById('initial-stock-group').classList.remove('hidden');
+      document.getElementById('part-modal').classList.remove('hidden');
+    }
+
+    function openEditPartModal(partId) {
+      const part = parts.find(p => p.id === partId);
+      if (!part) return;
+
+      document.getElementById('modal-title').textContent = '部品情報の編集';
+      document.getElementById('part-id').value = part.id;
+      document.getElementById('part-alias2').value = part.alias2 || part.code || '';
+      document.getElementById('part-code').value = part.code || '';
+      document.getElementById('part-name').value = part.name || '';
+      document.getElementById('part-unit').value = part.unit || '個';
+      document.getElementById('part-safety').value = part.safety;
+      document.getElementById('initial-stock-group').classList.add('hidden');
+      document.getElementById('part-modal').classList.remove('hidden');
+    }
+
+    function closePartModal() {
+      document.getElementById('part-modal').classList.add('hidden');
+    }
+
+    function handlePartFormSubmit(e) {
+      e.preventDefault();
+      const partId = document.getElementById('part-id').value;
+      const alias2 = document.getElementById('part-alias2').value.trim();
+      const code = alias2;
+      const name = alias2; // 部品名・社内品番は品目別名2に統一
+      const category = '完成品';
+      const location = '-';
+      const unit = document.getElementById('part-unit').value.trim() || '個';
+      const safety = Number(document.getElementById('part-safety').value) || 0;
+
+      if (partId) {
+        const part = parts.find(p => p.id === partId);
+        if (part) {
+          part.alias2 = alias2;
+          part.code = code;
+          part.name = name;
+          part.unit = unit;
+          part.safety = safety;
+          showToast('部品情報を更新しました');
+        }
+      } else {
+        const initialQty = Number(document.getElementById('part-initial-stock').value) || 0;
+        const newPart = {
+          id: 'P' + Date.now().toString().slice(-5),
+          alias2,
+          code,
+          name,
+          category,
+          location,
+          unit,
+          safety,
+          currentQty: initialQty
+        };
+        parts.push(newPart);
+
+        if (initialQty > 0) {
+          transactions.unshift({
+            id: 'T' + Date.now().toString().slice(-6),
+            date: new Date().toISOString().split('T')[0],
+            partId: newPart.id,
+            type: 'IN',
+            qty: initialQty,
+            staff: '初期登録',
+            notes: '初期在庫登録'
+          });
+        }
+        showToast('新規部品を登録しました');
+      }
+
+      saveData();
+      closePartModal();
+      renderInventory();
+    }
+
+    // ============================
+    // シート3: 入出庫の処理・履歴
+    // ============================
+    function populateTransactionPartSelect() {
+      const select = document.getElementById('tx-part-id');
+      const currentSelected = select.value;
+      select.innerHTML = '<option value="" disabled selected>対象部品を選択 (品目別名2)</option>';
+
+      // 品目別名2（品番）を昇順でソートしてドロップダウンに設定
+      const sortedSelectParts = [...parts].sort((a, b) => {
+        const aliasA = String(a.alias2 || a.code || '');
+        const aliasB = String(b.alias2 || b.code || '');
+        return aliasA.localeCompare(aliasB, undefined, { numeric: true, sensitivity: 'base' });
+      });
+
+      sortedSelectParts.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        const alias = p.alias2 || p.code;
+        opt.textContent = `${alias} (在庫: ${p.currentQty}${p.unit})`;
+        if (p.id === currentSelected) opt.selected = true;
+        select.appendChild(opt);
+      });
+      displayPartQuickInfo();
+    }
+
+    function displayPartQuickInfo() {
+      const partId = document.getElementById('tx-part-id').value;
+      const display = document.getElementById('tx-quick-stock-display');
+      const part = parts.find(p => p.id === partId);
+      if (part) {
+        display.innerHTML = `品目別名2: <span class="font-mono font-bold text-indigo-700">${escapeHtml(part.alias2 || '-')}</span> | 現在庫: <span class="font-bold text-slate-800">${part.currentQty} ${part.unit}</span> (安全在庫: ${part.safety})`;
+      } else {
+        display.textContent = '現在庫: -';
+      }
+    }
+
+    function updateTransactionStyling() {
+      const type = document.getElementById('tx-type').value;
+      const btn = document.getElementById('tx-submit-btn');
+      const qtyLabel = document.getElementById('tx-qty-label');
+
+      if (type === 'IN') {
+        btn.className = "w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm py-2.5 px-4 rounded-lg shadow-sm transition flex items-center justify-center";
+        btn.innerHTML = '<i class="fa-solid fa-arrow-down mr-1.5"></i>入庫を登録';
+        qtyLabel.textContent = '入庫数量';
+      } else if (type === 'OUT') {
+        btn.className = "w-full bg-rose-600 hover:bg-rose-700 text-white font-medium text-sm py-2.5 px-4 rounded-lg shadow-sm transition flex items-center justify-center";
+        btn.innerHTML = '<i class="fa-solid fa-arrow-up mr-1.5"></i>出庫を登録';
+        qtyLabel.textContent = '出庫数量';
+      } else {
+        btn.className = "w-full bg-blue-600 hover:bg-blue-700 text-white font-medium text-sm py-2.5 px-4 rounded-lg shadow-sm transition flex items-center justify-center";
+        btn.innerHTML = '<i class="fa-solid fa-sliders mr-1.5"></i>実在庫数に合わせる';
+        qtyLabel.textContent = '実棚卸数量 (変更後の現在庫数)';
+      }
+    }
+
+    function handleTransactionSubmit(e) {
+      e.preventDefault();
+      const date = document.getElementById('tx-date').value;
+      const type = document.getElementById('tx-type').value;
+      const partId = document.getElementById('tx-part-id').value;
+      const qty = Number(document.getElementById('tx-qty').value);
+      const staff = document.getElementById('tx-staff').value.trim();
+      const notes = document.getElementById('tx-notes').value.trim();
+
+      const part = parts.find(p => p.id === partId);
+      if (!part) {
+        showToast('部品を選択してください', false);
+        return;
+      }
+
+      if (type === 'OUT' && part.currentQty < qty) {
+        if (!confirm(`警告: 在庫数(${part.currentQty})以上を出庫しようとしています。\nマイナス在庫を許可して続行しますか？`)) {
+          return;
+        }
+      }
+
+      let diff = 0;
+      if (type === 'IN') {
+        diff = qty;
+        part.currentQty += qty;
+      } else if (type === 'OUT') {
+        diff = -qty;
+        part.currentQty -= qty;
+      } else if (type === 'ADJ') {
+        diff = qty - part.currentQty;
+        part.currentQty = qty;
+      }
+
+      const newTx = {
+        id: 'T' + Date.now().toString().slice(-6),
+        date: date || new Date().toISOString().split('T')[0],
+        partId,
+        type,
+        qty: (type === 'ADJ') ? diff : qty,
+        staff: staff || '-',
+        notes: notes || (type === 'ADJ' ? `棚卸調整 (新在庫:${qty})` : '-')
+      };
+
+      transactions.unshift(newTx);
+      saveData();
+
+      // 入力フォームリセット（日付・担当者は保持）
+      document.getElementById('tx-qty').value = '';
+      document.getElementById('tx-notes').value = '';
+      displayPartQuickInfo();
+      populateTransactionPartSelect();
+      renderTransactions();
+      showToast('入出庫伝票を登録しました');
+    }
+
+    function renderTransactions() {
+      const tbody = document.getElementById('transaction-table-body');
+      const filter = document.getElementById('tx-filter-query').value.toLowerCase().trim();
+      const noTxMsg = document.getElementById('no-tx-msg');
+
+      const filtered = transactions.filter(t => {
+        const part = parts.find(p => p.id === t.partId) || { alias2: '-', code: '削除済' };
+        const alias = (part.alias2 || part.code || '').toLowerCase();
+        return alias.includes(filter) ||
+               t.notes.toLowerCase().includes(filter) ||
+               (t.staff && t.staff.toLowerCase().includes(filter));
+      });
+
+      tbody.innerHTML = '';
+      if (filtered.length === 0) {
+        noTxMsg.classList.remove('hidden');
+      } else {
+        noTxMsg.classList.add('hidden');
+        filtered.forEach(tx => {
+          const part = parts.find(p => p.id === tx.partId) || { alias2: '削除済', code: '削除済', unit: '' };
+          const tr = document.createElement('tr');
+          tr.className = "hover:bg-slate-50 transition border-b border-slate-100 text-xs sm:text-sm";
+
+          let typeBadge = '';
+          let qtyColor = '';
+          let sign = '';
+
+          if (tx.type === 'IN') {
+            typeBadge = '<span class="bg-emerald-100 text-emerald-800 font-semibold px-2 py-0.5 rounded text-xs">入荷</span>';
+            qtyColor = 'text-emerald-700 font-semibold';
+            sign = '+';
+          } else if (tx.type === 'OUT') {
+            typeBadge = '<span class="bg-rose-100 text-rose-800 font-semibold px-2 py-0.5 rounded text-xs">出荷</span>';
+            qtyColor = 'text-rose-700 font-semibold';
+            sign = '-';
+          } else {
+            typeBadge = '<span class="bg-blue-100 text-blue-800 font-semibold px-2 py-0.5 rounded text-xs">調整</span>';
+            qtyColor = tx.qty >= 0 ? 'text-emerald-700 font-semibold' : 'text-rose-700 font-semibold';
+            sign = tx.qty > 0 ? '+' : '';
+          }
+
+          tr.innerHTML = `
+            <td class="py-3 px-4 font-mono text-slate-500">${tx.date}</td>
+            <td class="py-3 px-4 text-center">${typeBadge}</td>
+            <td class="py-3 px-4 font-mono font-bold text-indigo-700">${escapeHtml(part.alias2 || part.code)}</td>
+            <td class="py-3 px-4 text-right ${qtyColor}">
+              ${sign}${Math.abs(tx.qty).toLocaleString()} <span class="text-xs text-slate-400 font-normal">${escapeHtml(part.unit || '')}</span>
+            </td>
+            <td class="py-3 px-4 text-slate-600">${escapeHtml(tx.staff || '-')}</td>
+            <td class="py-3 px-4 text-slate-500 max-w-xs truncate" title="${escapeHtml(tx.notes || '')}">${escapeHtml(tx.notes || '-')}</td>
+            <td class="py-3 px-4 text-center">
+              <button onclick="revertTransaction('${tx.id}')" title="この取引を取り消して在庫を戻す" class="text-slate-400 hover:text-rose-600 transition">
+                <i class="fa-solid fa-rotate-left"></i>
+              </button>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+      }
+    }
+
+    // 取引取消
+    let revertTargetTxId = null;
+
+    function revertTransaction(txId) {
+      const tx = transactions.find(t => t.id === txId);
+      if (!tx) return;
+
+      const part = parts.find(p => p.id === tx.partId);
+      const alias = part ? (part.alias2 || part.code) : '削除済部品';
+
+      revertTargetTxId = txId;
+      document.getElementById('revert-target-date').textContent = tx.date;
+      document.getElementById('revert-target-alias').textContent = alias;
+
+      let typeText = tx.type === 'IN' ? '入荷' : (tx.type === 'OUT' ? '出荷' : '棚卸調整');
+      let qtySpan = document.getElementById('revert-target-qty');
+      qtySpan.textContent = `${typeText} ${Math.abs(tx.qty)} ${part ? (part.unit || '個') : ''}`;
+      qtySpan.className = tx.type === 'IN' ? 'font-bold text-emerald-600' : 'font-bold text-rose-600';
+
+      document.getElementById('revert-confirm-modal').classList.remove('hidden');
+    }
+
+    function closeRevertModal() {
+      revertTargetTxId = null;
+      document.getElementById('revert-confirm-modal').classList.add('hidden');
+    }
+
+    function executeRevertTransaction() {
+      if (!revertTargetTxId) return;
+
+      const tx = transactions.find(t => t.id === revertTargetTxId);
+      if (!tx) {
+        closeRevertModal();
+        return;
+      }
+
+      const part = parts.find(p => p.id === tx.partId);
+
+      if (part) {
+        if (tx.type === 'IN') {
+          part.currentQty -= tx.qty;
+        } else if (tx.type === 'OUT') {
+          part.currentQty += tx.qty;
+        } else if (tx.type === 'ADJ') {
+          part.currentQty -= tx.qty;
+        }
+      }
+
+      transactions = transactions.filter(t => t.id !== revertTargetTxId);
+      saveData();
+      closeRevertModal();
+      renderTransactions();
+      displayPartQuickInfo();
+      populateTransactionPartSelect();
+      if (document.getElementById('sheet-monthly') && !document.getElementById('sheet-monthly').classList.contains('hidden')) {
+        renderMonthlyReport();
+      }
+      showToast('取引を取り消し、在庫数を元に戻しました');
+    }
+
+    // ============================
+    // クイック入出庫モーダル (シート1から即時呼出)
+    // ============================
+    function openQuickModal(partId, type) {
+      const part = parts.find(p => p.id === partId);
+      if (!part) return;
+
+      document.getElementById('quick-part-id').value = partId;
+      document.getElementById('quick-type').value = type;
+      document.getElementById('quick-qty').value = '';
+      document.getElementById('quick-notes').value = '';
+      
+      const modalTitle = document.getElementById('quick-modal-title');
+      const details = document.getElementById('quick-part-details');
+      const btn = document.getElementById('quick-confirm-btn');
+      const label = document.getElementById('quick-qty-label');
+
+      details.innerHTML = `
+        <div class="text-indigo-700 font-mono text-sm font-bold">品目別名2: ${escapeHtml(part.alias2 || part.code)}</div>
+        <div class="text-slate-700 text-xs mt-1">現在庫: <span class="font-bold text-slate-900">${part.currentQty} ${part.unit}</span></div>
+      `;
+
+      if (type === 'IN') {
+        modalTitle.textContent = 'クイック入荷 (受入)';
+        label.textContent = `入荷数量 (${part.unit})`;
+        btn.className = "w-1/2 py-2 bg-emerald-600 text-white rounded-lg text-sm font-medium hover:bg-emerald-700 shadow-sm";
+        btn.textContent = '入庫を確定';
+      } else {
+        modalTitle.textContent = 'クイック出荷 (払出)';
+        label.textContent = `出荷数量 (${part.unit})`;
+        btn.className = "w-1/2 py-2 bg-rose-600 text-white rounded-lg text-sm font-medium hover:bg-rose-700 shadow-sm";
+        btn.textContent = '出庫を確定';
+      }
+
+      document.getElementById('quick-action-modal').classList.remove('hidden');
+      document.getElementById('quick-qty').focus();
+    }
+
+    function closeQuickModal() {
+      document.getElementById('quick-action-modal').classList.add('hidden');
+    }
+
+    function handleQuickFormSubmit(e) {
+      e.preventDefault();
+      const partId = document.getElementById('quick-part-id').value;
+      const type = document.getElementById('quick-type').value;
+      const qty = Number(document.getElementById('quick-qty').value);
+      const staff = document.getElementById('quick-staff').value.trim();
+      const notes = document.getElementById('quick-notes').value.trim();
+
+      const part = parts.find(p => p.id === partId);
+      if (!part) return;
+
+      if (type === 'OUT' && part.currentQty < qty) {
+        if (!confirm(`警告: 在庫数(${part.currentQty})以上を出庫しようとしています。続行しますか？`)) {
+          return;
+        }
+      }
+
+      if (type === 'IN') {
+        part.currentQty += qty;
+      } else {
+        part.currentQty -= qty;
+      }
+
+      transactions.unshift({
+        id: 'T' + Date.now().toString().slice(-6),
+        date: new Date().toISOString().split('T')[0],
+        partId,
+        type,
+        qty,
+        staff: staff || '作業担当',
+        notes: notes || (type === 'IN' ? 'クイック受入' : 'クイック払出')
+      });
+
+      saveData();
+      closeQuickModal();
+      renderInventory();
+      showToast(`${type === 'IN' ? '入庫' : '出庫'}処理が完了しました`);
+    }
+
+    // ============================
+    // CSV エクスポート
+    // ============================
+    // マスター完成品.xlsx (Excel) インポート機能
+    // ============================
+    function handleMasterExcelImport(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+
+          // 最初のシートを取得
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+
+          // 2次元配列（行×列）として取得
+          const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+
+          if (!rows || rows.length <= 1) {
+            showToast('Excelシートにデータが見つかりません', false);
+            return;
+          }
+
+          // ヘッダー行（通常1行目）の解析
+          const headerRow = rows[0].map(c => String(c).trim());
+          let alias2Idx = 8; // デフォルトI列 (0-indexed: A=0, B=1, ... I=8)
+          let nameIdx = -1;
+          let codeIdx = -1;
+          let categoryIdx = -1;
+          let locationIdx = -1;
+
+          headerRow.forEach((colName, idx) => {
+            const name = String(colName);
+            if (name.includes('品目別名2') || name.includes('別名２') || name.includes('品目別名')) alias2Idx = idx;
+            if (name.includes('品名') || name.includes('部品名') || name.includes('品目名')) nameIdx = idx;
+            if (name.includes('社内品番') || name.includes('部品品番') || name.includes('品目コード')) codeIdx = idx;
+            if (name.includes('分類') || name.includes('カテゴリ')) categoryIdx = idx;
+            if (name.includes('棚番') || name.includes('ロケーション')) locationIdx = idx;
+          });
+
+          let importedCount = 0;
+          let updatedCount = 0;
+
+          // 2行目以降のデータ行を読み込み
+          for (let r = 1; r < rows.length; r++) {
+            const row = rows[r];
+            if (!row || row.length === 0) continue;
+
+            const rawAlias = row[alias2Idx];
+            if (rawAlias === undefined || rawAlias === null) continue;
+            const alias2Val = String(rawAlias).trim();
+            if (!alias2Val) continue;
+
+            const nameVal = alias2Val;
+            const codeVal = alias2Val;
+            const catVal = (categoryIdx >= 0 && row[categoryIdx]) ? String(row[categoryIdx]).trim() : '完成品';
+            const locVal = (locationIdx >= 0 && row[locationIdx]) ? String(row[locationIdx]).trim() : 'A-01';
+
+            const existing = parts.find(p => p.alias2 === alias2Val);
+            if (existing) {
+              existing.name = alias2Val;
+              existing.code = alias2Val;
+              if (categoryIdx >= 0 && catVal) existing.category = catVal;
+              if (locationIdx >= 0 && locVal) existing.location = locVal;
+              updatedCount++;
+            } else {
+              parts.push({
+                id: 'P' + Date.now().toString().slice(-4) + Math.floor(Math.random() * 1000),
+                alias2: alias2Val,
+                code: codeVal,
+                name: nameVal,
+                category: catVal,
+                location: locVal,
+                unit: '個',
+                safety: 10,
+                currentQty: 0
+              });
+              importedCount++;
+            }
+          }
+
+          saveData();
+          renderInventory();
+          if (document.getElementById('sheet-monthly') && !document.getElementById('sheet-monthly').classList.contains('hidden')) {
+            renderMonthlyReport();
+          }
+          showToast(`Excel取込完了: 新規${importedCount}件 / 更新${updatedCount}件`);
+        } catch (err) {
+          console.error(err);
+          showToast('Excelファイルの読み込みに失敗しました', false);
+        } finally {
+          event.target.value = '';
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    // CSV エクスポート
+    function exportDataToCSV() {
+      let csvContent = "\uFEFF"; // UTF-8 BOM
+      csvContent += "=== 部品在庫一覧 ===\n";
+      csvContent += "品目別名2(I列),現在庫数,安全在庫,単位,状態\n";
+
+      parts.forEach(p => {
+        let status = "適正";
+        if (p.currentQty <= 0) status = "欠品";
+        else if (p.currentQty <= p.safety) status = "要補充";
+
+        csvContent += `"${p.alias2 || p.code}",${p.currentQty},${p.safety},"${p.unit}","${status}"\n`;
+      });
+
+      csvContent += "\n=== 入出庫履歴ログ ===\n";
+      csvContent += "取引日時,種別,品目別名2,数量,担当者,備考\n";
+
+      transactions.forEach(t => {
+        const part = parts.find(p => p.id === t.partId) || { alias2: '-', code: '削除済' };
+        const typeStr = t.type === 'IN' ? '入荷' : (t.type === 'OUT' ? '出荷' : '棚卸調整');
+        csvContent += `"${t.date}","${typeStr}","${part.alias2 || part.code}",${t.qty},"${t.staff || ''}","${t.notes || ''}"\n`;
+      });
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `部品在庫管理表_${new Date().toISOString().split('T')[0]}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      showToast('CSVファイルをダウンロードしました');
+    }
+
+    // エスケープ処理
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    // 初期化
+    window.onload = function() {
+      setTodayDate();
+      renderInventory();
+    };
+  </script>
+</body>
+</html>
