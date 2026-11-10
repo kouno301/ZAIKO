@@ -136,10 +136,12 @@
           </select>
         </div>
         <div>
-          <!-- 新規部品登録モーダル呼出ボタン -->
-          <button onclick="openPartModal()" class="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-sm py-2 px-4 rounded-lg shadow-sm transition flex items-center justify-center">
-            <i class="fa-solid fa-plus mr-1.5"></i>新規部品登録
-          </button>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">単位</label>
+          <input type="text" id="part-unit" placeholder="個, 本, kg" value="個" class="w-full text-sm border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500">
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1">安全在庫数 (発注点 / GH列メモ2)</label>
+          <input type="number" id="part-safety" min="0" value="5" class="w-full text-sm border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500">
         </div>
       </div>
 
@@ -370,7 +372,7 @@
           </div>
           <div>
             <label class="block text-xs font-semibold text-slate-700 mb-1">安全在庫数 (発注点)</label>
-            <input type="number" id="part-safety" min="0" value="10" class="w-full text-sm border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500">
+            <input type="number" id="part-safety" min="0" value="6" class="w-full text-sm border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500">
           </div>
         </div>
         <div id="initial-stock-group">
@@ -525,9 +527,9 @@
 
   <!-- JavaScript -->
   <script>
-    // 初期データ（社内品番・部品名称を排除し、品目別名2を主軸に設定）
+    // 初期データ（GH列メモ2の指定通り発注点を5に設定）
     const DEFAULT_PARTS = [
-      { id: "P001", alias2: "62210-16060-C0", code: "62210-16060-C0", name: "62210-16060-C0", category: "完成品", location: "A-01", safety: 10, unit: "個", currentQty: 0 }
+      { id: "P001", alias2: "62210-16060-C0", code: "62210-16060-C0", name: "62210-16060-C0", category: "完成品", location: "A-01", safety: 5, unit: "個", currentQty: 0 }
     ];
 
     const DEFAULT_TRANSACTIONS = [];
@@ -542,6 +544,13 @@
     if (parts.length === 0) {
       parts = JSON.parse(JSON.stringify(DEFAULT_PARTS));
     }
+
+    // 62210-16060-C0 の発注点をメモ2指定値(5)に自動更新
+    parts.forEach(p => {
+      if (p.alias2 === '62210-16060-C0' && p.safety === 6) {
+        p.safety = 5;
+      }
+    });
 
     // 不要になったダミー取引の除去
     transactions = transactions.filter(t => parts.some(p => p.id === t.partId));
@@ -1339,7 +1348,7 @@
       document.getElementById('part-code').value = '';
       document.getElementById('part-name').value = '';
       document.getElementById('part-unit').value = '個';
-      document.getElementById('part-safety').value = '10';
+      document.getElementById('part-safety').value = '5';
       document.getElementById('part-initial-stock').value = '0';
       document.getElementById('initial-stock-group').classList.remove('hidden');
       document.getElementById('part-modal').classList.remove('hidden');
@@ -1763,6 +1772,20 @@
           // ヘッダー行（通常1行目）の解析
           const headerRow = rows[0].map(c => String(c).trim());
           let alias2Idx = 8; // デフォルトI列 (0-indexed: A=0, B=1, ... I=8)
+          
+          // GH列のインデックス計算: G=7, H=8 -> 7*26 + 8 - 1 = 182 + 8 - 1 = 189 または 0-indexedで G(6)*26 + H(7) + 26 = 215 (GH列)
+          // Excel列記号 "GH" -> (7 * 26) + 8 = 190 (1-based) => 189 (0-based)
+          // 念のため列記号変換関数を用意
+          function colNameToIndex(colName) {
+            let index = 0;
+            for (let i = 0; i < colName.length; i++) {
+              index = index * 26 + (colName.charCodeAt(i) - 64);
+            }
+            return index - 1;
+          }
+          const ghColIdx = colNameToIndex("GH"); // 189番目の列 (0始まり)
+
+          let memo2Idx = -1;
           let nameIdx = -1;
           let codeIdx = -1;
           let categoryIdx = -1;
@@ -1771,11 +1794,15 @@
           headerRow.forEach((colName, idx) => {
             const name = String(colName);
             if (name.includes('品目別名2') || name.includes('別名２') || name.includes('品目別名')) alias2Idx = idx;
+            if (name.includes('メモ2') || name.includes('メモ２')) memo2Idx = idx;
             if (name.includes('品名') || name.includes('部品名') || name.includes('品目名')) nameIdx = idx;
             if (name.includes('社内品番') || name.includes('部品品番') || name.includes('品目コード')) codeIdx = idx;
             if (name.includes('分類') || name.includes('カテゴリ')) categoryIdx = idx;
             if (name.includes('棚番') || name.includes('ロケーション')) locationIdx = idx;
           });
+
+          // ヘッダーで「メモ2」が見つからなかった場合はGH列(189列目)を優先使用
+          const targetMemo2Idx = memo2Idx !== -1 ? memo2Idx : ghColIdx;
 
           let importedCount = 0;
           let updatedCount = 0;
@@ -1790,6 +1817,22 @@
             const alias2Val = String(rawAlias).trim();
             if (!alias2Val) continue;
 
+            // GH列（またはメモ2列）から安全在庫数を抽出
+            let safetyVal = 5; // 初期値
+            let rawSafety = (targetMemo2Idx >= 0 && row[targetMemo2Idx] !== undefined) ? row[targetMemo2Idx] : null;
+
+            // 見つからない場合はGH列(189列目)を直接再確認
+            if ((rawSafety === null || rawSafety === '') && row[ghColIdx] !== undefined) {
+              rawSafety = row[ghColIdx];
+            }
+
+            if (rawSafety !== null && rawSafety !== '') {
+              const parsedNum = parseFloat(String(rawSafety).replace(/[^0-9.-]/g, ''));
+              if (!isNaN(parsedNum) && parsedNum >= 0) {
+                safetyVal = Math.round(parsedNum);
+              }
+            }
+
             const nameVal = alias2Val;
             const codeVal = alias2Val;
             const catVal = (categoryIdx >= 0 && row[categoryIdx]) ? String(row[categoryIdx]).trim() : '完成品';
@@ -1799,6 +1842,7 @@
             if (existing) {
               existing.name = alias2Val;
               existing.code = alias2Val;
+              existing.safety = safetyVal; // GH列メモ2の値で更新
               if (categoryIdx >= 0 && catVal) existing.category = catVal;
               if (locationIdx >= 0 && locVal) existing.location = locVal;
               updatedCount++;
@@ -1811,7 +1855,7 @@
                 category: catVal,
                 location: locVal,
                 unit: '個',
-                safety: 10,
+                safety: safetyVal,
                 currentQty: 0
               });
               importedCount++;
@@ -1823,7 +1867,7 @@
           if (document.getElementById('sheet-monthly') && !document.getElementById('sheet-monthly').classList.contains('hidden')) {
             renderMonthlyReport();
           }
-          showToast(`Excel取込完了: 新規${importedCount}件 / 更新${updatedCount}件`);
+          showToast(`Excel取込完了: 新規${importedCount}件 / 更新${updatedCount}件 (GH列メモ2反映)`);
         } catch (err) {
           console.error(err);
           showToast('Excelファイルの読み込みに失敗しました', false);
