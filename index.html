@@ -177,19 +177,31 @@
     <div id="sheet-monthly" class="space-y-6 hidden">
       <!-- 月選択 & コントロールバー -->
       <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div class="flex items-center space-x-3">
-          <label for="monthly-target-month" class="text-sm font-bold text-slate-700 flex items-center">
-            <i class="fa-regular fa-calendar text-indigo-600 mr-2 text-base"></i>対象年月:
-          </label>
-          <input type="month" id="monthly-target-month" onchange="renderMonthlyReport()" class="border border-slate-300 rounded-lg text-sm px-3 py-2 bg-white font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500">
-          <button onclick="setCurrentMonth()" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium px-2.5 py-2 rounded-lg transition border border-slate-200">
-            当月
-          </button>
+        <div class="flex flex-wrap items-center gap-3">
+          <div class="flex items-center space-x-2">
+            <label for="monthly-target-month" class="text-sm font-bold text-slate-700 flex items-center">
+              <i class="fa-regular fa-calendar text-indigo-600 mr-2 text-base"></i>対象年月:
+            </label>
+            <input type="month" id="monthly-target-month" onchange="renderMonthlyReport()" class="border border-slate-300 rounded-lg text-sm px-3 py-2 bg-white font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <button onclick="setCurrentMonth()" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium px-2.5 py-2 rounded-lg transition border border-slate-200">
+              当月
+            </button>
+          </div>
+          <!-- シート2 品番検索 & QR読取ボタン -->
+          <div class="relative flex items-center gap-2">
+            <div class="relative">
+              <i class="fa-solid fa-search absolute left-3 top-2.5 text-slate-400 text-xs"></i>
+              <input type="text" id="monthly-search-query" oninput="renderMonthlyReport()" placeholder="品目で絞り込み..." class="w-44 sm:w-56 pl-8 pr-3 py-1.5 border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            </div>
+            <button onclick="openQRScanModal('monthly')" class="bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center shadow-sm transition whitespace-nowrap" title="QRコード読み取りで部品を絞込">
+              <i class="fa-solid fa-qrcode mr-1 text-sm"></i>QR読取
+            </button>
+          </div>
         </div>
         <div class="flex items-center space-x-2 text-xs text-slate-500">
           <span class="inline-flex items-center"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500 inline-block mr-1"></span>入庫</span>
           <span class="inline-flex items-center"><span class="w-2.5 h-2.5 rounded-full bg-rose-500 inline-block mr-1"></span>出庫</span>
-          <span class="inline-flex items-center"><span class="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block mr-1"></span>棚点残</span>
+          <span class="inline-flex items-center"><span class="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block mr-1"></span>調整</span>
         </div>
       </div>
 
@@ -262,12 +274,12 @@
             <label class="block text-xs font-semibold text-slate-600 mb-1">取引日</label>
             <input type="date" id="tx-date" required class="w-full text-sm border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500">
           </div>
-          <!-- 区分 -->
+          <!-- 区分 (②デフォルトを出庫に設定) -->
           <div>
             <label class="block text-xs font-semibold text-slate-600 mb-1">入出庫種別</label>
             <select id="tx-type" required onchange="updateTransactionStyling()" class="w-full text-sm border border-slate-300 rounded-lg p-2.5 font-semibold focus:ring-2 focus:ring-indigo-500 bg-white">
+              <option value="OUT" selected>➖ 出荷 (払出)</option>
               <option value="IN">➕ 入荷 (受入)</option>
-              <option value="OUT">➖ 出荷 (払出)</option>
               <option value="ADJ">🔄 在庫調整 (棚卸)</option>
             </select>
           </div>
@@ -286,23 +298,23 @@
           </div>
           <!-- 数量 -->
           <div>
-            <label class="block text-xs font-semibold text-slate-600 mb-1" id="tx-qty-label">数量</label>
+            <label class="block text-xs font-semibold text-slate-600 mb-1" id="tx-qty-label">出庫数量</label>
             <input type="number" id="tx-qty" min="1" step="1" required placeholder="0" class="w-full text-sm border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 font-semibold">
           </div>
-          <!-- 担当者 -->
+          <!-- 担当者 (①一度入力すれば記憶) -->
           <div>
             <label class="block text-xs font-semibold text-slate-600 mb-1">担当者名</label>
-            <input type="text" id="tx-staff" placeholder="例: 佐藤" class="w-full text-sm border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500">
+            <input type="text" id="tx-staff" placeholder="例: 佐藤" onchange="saveStaffPreference(this.value)" class="w-full text-sm border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500">
           </div>
           <!-- 理由・備考 -->
           <div class="md:col-span-2 sm:col-span-2">
             <label class="block text-xs font-semibold text-slate-600 mb-1">備考 / 発注元 / 出荷先</label>
             <input type="text" id="tx-notes" placeholder="例: Aライン生産用、サプライヤ定期便など" class="w-full text-sm border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500">
           </div>
-          <!-- 登録ボタン -->
+          <!-- 登録ボタン (②出庫デフォルトスタイル) -->
           <div class="flex items-end">
-            <button type="submit" id="tx-submit-btn" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-sm py-2.5 px-4 rounded-lg shadow-sm transition flex items-center justify-center">
-              <i class="fa-solid fa-check mr-1.5"></i>この内容で登録
+            <button type="submit" id="tx-submit-btn" class="w-full bg-rose-600 hover:bg-rose-700 text-white font-medium text-sm py-2.5 px-4 rounded-lg shadow-sm transition flex items-center justify-center">
+              <i class="fa-solid fa-arrow-up mr-1.5"></i>出庫を登録
             </button>
           </div>
         </form>
@@ -408,7 +420,7 @@
         </div>
         <div>
           <label class="block text-xs font-semibold text-slate-700 mb-1">担当者</label>
-          <input type="text" id="quick-staff" placeholder="担当名" class="w-full text-sm border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500">
+          <input type="text" id="quick-staff" placeholder="担当名" onchange="saveStaffPreference(this.value)" class="w-full text-sm border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-indigo-500">
         </div>
         <div>
           <label class="block text-xs font-semibold text-slate-700 mb-1">備考</label>
@@ -537,6 +549,8 @@
     // LocalStorageから取得、なければ初期データ
     let parts = JSON.parse(localStorage.getItem('parts_inventory_data')) || DEFAULT_PARTS;
     let transactions = JSON.parse(localStorage.getItem('parts_transactions_data')) || DEFAULT_TRANSACTIONS;
+    // ① 担当者の記憶値を取得
+    let savedStaff = localStorage.getItem('parts_last_staff') || '';
 
     // 不正なダミーサンプル品番（90467-10161 や 62210-46030-C0、推測登録品）をLocalStorageから自動除去
     const DUMMY_ALIASES = ['90467-10161', '62210-46030-C0', '62220-16060-C0', '62211-16060-C0', '62221-16060-C0'];
@@ -577,6 +591,18 @@
       localStorage.setItem('parts_transactions_data', JSON.stringify(transactions));
     }
 
+    // ① 担当者の保存と同期
+    function saveStaffPreference(staffName) {
+      if (staffName !== undefined && staffName !== null) {
+        savedStaff = String(staffName).trim();
+        localStorage.setItem('parts_last_staff', savedStaff);
+        const txStaffInput = document.getElementById('tx-staff');
+        const quickStaffInput = document.getElementById('quick-staff');
+        if (txStaffInput && txStaffInput.value !== savedStaff) txStaffInput.value = savedStaff;
+        if (quickStaffInput && quickStaffInput.value !== savedStaff) quickStaffInput.value = savedStaff;
+      }
+    }
+
     // 今日の日付をセット
     function setTodayDate() {
       const today = new Date().toISOString().split('T')[0];
@@ -587,6 +613,12 @@
       const monthlyInput = document.getElementById('monthly-target-month');
       if (monthlyInput && !monthlyInput.value) {
         monthlyInput.value = currentYearMonth;
+      }
+
+      // 記憶された担当者を反映
+      if (savedStaff) {
+        const staffInput = document.getElementById('tx-staff');
+        if (staffInput) staffInput.value = savedStaff;
       }
     }
 
@@ -962,6 +994,12 @@
               searchInput.value = matchedPart.alias2 || matchedPart.code;
               renderInventory();
             }
+          } else if (qrTargetMode === 'monthly') {
+            const monthlySearch = document.getElementById('monthly-search-query');
+            if (monthlySearch) {
+              monthlySearch.value = matchedPart.alias2 || matchedPart.code;
+              renderMonthlyReport();
+            }
           } else if (qrTargetMode === 'transaction') {
             const txSelect = document.getElementById('tx-part-id');
             if (txSelect) {
@@ -992,6 +1030,8 @@
       const thead = document.getElementById('monthly-table-head');
       const tbody = document.getElementById('monthly-table-body');
       const noDataMsg = document.getElementById('no-monthly-data-msg');
+
+      const searchQuery = (document.getElementById('monthly-search-query')?.value || '').toLowerCase().trim();
 
       const [yearStr, monthStr] = targetMonth.split('-');
       const year = parseInt(yearStr, 10);
@@ -1035,7 +1075,15 @@
       thead.innerHTML = headHtml;
 
       tbody.innerHTML = '';
-      if (parts.length === 0) {
+
+      // 品目別名2で絞り込み
+      let filteredParts = parts.filter(p => {
+        if (!searchQuery) return true;
+        const alias = String(p.alias2 || p.code || '').toLowerCase();
+        return alias.includes(searchQuery);
+      });
+
+      if (filteredParts.length === 0) {
         noDataMsg.classList.remove('hidden');
         return;
       }
@@ -1047,217 +1095,7 @@
       let activePartIds = new Set();
 
       // 品目別名2（品番）を昇順でソートして集計・描画
-      const sortedMonthlyParts = [...parts].sort((a, b) => {
-        const aliasA = String(a.alias2 || a.code || '');
-        const aliasB = String(b.alias2 || b.code || '');
-        return aliasA.localeCompare(aliasB, undefined, { numeric: true, sensitivity: 'base' });
-      });
-
-      sortedMonthlyParts.forEach(part => {
-        const monthTx = transactions.filter(t => t.partId === part.id && t.date.startsWith(targetMonth));
-        
-        const dailyMap = {};
-        for (let d = 1; d <= daysInMonth; d++) {
-          dailyMap[d] = { in: 0, out: 0, adj: 0 };
-        }
-
-        let sumIn = 0;
-        let sumOut = 0;
-        let sumAdj = 0;
-
-        monthTx.forEach(t => {
-          totalMonthlyTx++;
-          const dayNum = parseInt(t.date.split('-')[2], 10);
-          if (t.type === 'IN') {
-            sumIn += Number(t.qty);
-            if (dailyMap[dayNum]) dailyMap[dayNum].in += Number(t.qty);
-          } else if (t.type === 'OUT') {
-            sumOut += Number(t.qty);
-            activePartIds.add(part.id);
-            if (dailyMap[dayNum]) dailyMap[dayNum].out += Number(t.qty);
-          } else if (t.type === 'ADJ') {
-            sumAdj += Number(t.qty);
-            if (dailyMap[dayNum]) dailyMap[dayNum].adj += Number(t.qty);
-          }
-        });
-
-        totalMonthlyIn += sumIn;
-        totalMonthlyOut += sumOut;
-
-        const afterTx = transactions.filter(t => t.partId === part.id && t.date.slice(0, 7) > targetMonth);
-        let qtyAfterMonth = 0;
-        afterTx.forEach(t => {
-          if (t.type === 'IN') qtyAfterMonth += t.qty;
-          else if (t.type === 'OUT') qtyAfterMonth -= t.qty;
-          else if (t.type === 'ADJ') qtyAfterMonth += t.qty;
-        });
-
-        const endOfMonthQty = part.currentQty - qtyAfterMonth;
-        const startOfMonthQty = endOfMonthQty - sumIn + sumOut - sumAdj;
-
-        const rowSpan = sumAdj !== 0 ? 3 : 2;
-
-        // 共通セル (左側固定列および繰越・月末在庫)
-        const partCell = `
-          <td rowspan="${rowSpan}" class="py-2 px-3 font-mono font-bold text-indigo-700 sticky left-0 z-10 bg-white border-r border-slate-300 text-sm align-middle shadow-sm">
-            ${escapeHtml(part.alias2 || part.code)}
-          </td>
-        `;
-        const unitCell = `
-          <td rowspan="${rowSpan}" class="py-2 px-2 text-center text-slate-500 border-r border-slate-200 font-medium align-middle">
-            ${escapeHtml(part.unit || '個')}
-          </td>
-        `;
-        const startQtyCell = `
-          <td rowspan="${rowSpan}" class="py-2 px-2.5 text-right font-mono bg-slate-50 border-r border-slate-300 font-bold text-sm text-slate-700 align-middle">
-            ${startOfMonthQty.toLocaleString()}
-          </td>
-        `;
-        const endQtyCell = `
-          <td rowspan="${rowSpan}" class="py-2 px-3 text-right font-mono font-bold text-base text-indigo-950 bg-indigo-50/70 align-middle border-b-2 border-slate-300">
-            ${endOfMonthQty.toLocaleString()}
-          </td>
-        `;
-
-        // 1. 入庫行
-        const trIn = document.createElement('tr');
-        trIn.className = "hover:bg-slate-50/80 transition border-t border-slate-200";
-        let inHtml = partCell;
-        inHtml += `
-          <td class="py-1 px-1.5 text-center sticky left-[170px] z-10 bg-emerald-50 text-emerald-800 font-bold text-xs border-r border-slate-300 whitespace-nowrap">
-            入庫
-          </td>
-        `;
-        inHtml += unitCell;
-        inHtml += startQtyCell;
-
-        for (let d = 1; d <= daysInMonth; d++) {
-          const dateObj = new Date(year, month - 1, d);
-          const dayOfWeek = dateObj.getDay();
-          const dIn = dailyMap[d].in;
-          let colBg = '';
-          if (dayOfWeek === 0) colBg = 'bg-rose-50/20';
-          else if (dayOfWeek === 6) colBg = 'bg-blue-50/20';
-
-          inHtml += `
-            <td class="p-0.5 text-center font-mono border-r border-slate-200 ${colBg} h-8 align-middle">
-              ${dIn > 0 
-                ? `<span class="inline-block w-full text-base sm:text-lg font-mono font-black text-emerald-600 leading-none tracking-tighter" title="入庫: ${dIn}">+${dIn}</span>`
-                : `<span class="text-slate-200 text-xs">-</span>`
-              }
-            </td>
-          `;
-        }
-
-        inHtml += `
-          <td class="py-1 px-2 text-right font-mono font-bold text-sm text-emerald-700 bg-emerald-50/40 border-r border-slate-300">
-            ${sumIn > 0 ? '+' + sumIn.toLocaleString() : '-'}
-          </td>
-        `;
-        inHtml += endQtyCell;
-        trIn.innerHTML = inHtml;
-        tbody.appendChild(trIn);
-
-        // 2. 出庫行
-        const trOut = document.createElement('tr');
-        trOut.className = `hover:bg-slate-50/80 transition ${sumAdj === 0 ? 'border-b-2 border-slate-300' : 'border-b border-slate-100'}`;
-        let outHtml = `
-          <td class="py-1 px-1.5 text-center sticky left-[170px] z-10 bg-rose-50 text-rose-800 font-bold text-xs border-r border-slate-300 whitespace-nowrap">
-            出庫
-          </td>
-        `;
-
-        for (let d = 1; d <= daysInMonth; d++) {
-          const dateObj = new Date(year, month - 1, d);
-          const dayOfWeek = dateObj.getDay();
-          const dOut = dailyMap[d].out;
-          let colBg = '';
-          if (dayOfWeek === 0) colBg = 'bg-rose-50/20';
-          else if (dayOfWeek === 6) colBg = 'bg-blue-50/20';
-
-          outHtml += `
-            <td class="p-0.5 text-center font-mono border-r border-slate-200 ${colBg} h-8 align-middle">
-              ${dOut > 0 
-                ? `<span class="inline-block w-full text-base sm:text-lg font-mono font-black text-rose-600 leading-none tracking-tighter" title="出庫: ${dOut}">-${dOut}</span>`
-                : `<span class="text-slate-200 text-xs">-</span>`
-              }
-            </td>
-          `;
-        }
-
-        outHtml += `
-          <td class="py-1 px-2 text-right font-mono font-bold text-sm text-rose-700 bg-rose-50/40 border-r border-slate-300">
-            ${sumOut > 0 ? '-' + sumOut.toLocaleString() : '-'}
-          </td>
-        `;
-        trOut.innerHTML = outHtml;
-        tbody.appendChild(trOut);
-
-        // 3. 調整行（棚卸調整実績がある場合のみ追加）
-        if (sumAdj !== 0) {
-          const trAdj = document.createElement('tr');
-          trAdj.className = "hover:bg-slate-50/80 transition border-b-2 border-slate-300";
-          let adjHtml = `
-            <td class="py-1 px-1.5 text-center sticky left-[170px] z-10 bg-blue-50 text-blue-800 font-bold text-xs border-r border-slate-300 whitespace-nowrap">
-              調整
-            </td>
-          `;
-          for (let d = 1; d <= daysInMonth; d++) {
-            const dateObj = new Date(year, month - 1, d);
-            const dayOfWeek = dateObj.getDay();
-            const dAdj = dailyMap[d].adj;
-            let colBg = '';
-            if (dayOfWeek === 0) colBg = 'bg-rose-50/20';
-            else if (dayOfWeek === 6) colBg = 'bg-blue-50/20';
-
-            adjHtml += `
-              <td class="p-0.5 text-center font-mono border-r border-slate-200 ${colBg} h-8 align-middle">
-                ${dAdj !== 0 
-                  ? `<span class="inline-block w-full text-xs sm:text-sm font-mono font-bold text-blue-600 leading-none" title="調整: ${dAdj}">${dAdj > 0 ? '+' : ''}${dAdj}</span>`
-                  : `<span class="text-slate-200 text-xs">-</span>`
-                }
-              </td>
-            `;
-          }
-          adjHtml += `
-            <td class="py-1 px-2 text-right font-mono font-bold text-xs sm:text-sm text-blue-700 bg-blue-50/30 border-r border-slate-300">
-              ${sumAdj > 0 ? '+' + sumAdj.toLocaleString() : sumAdj.toLocaleString()}
-            </td>
-          `;
-          trAdj.innerHTML = adjHtml;
-          tbody.appendChild(trAdj);
-        }
-      });
-
-      document.getElementById('monthly-total-in').textContent = totalMonthlyIn.toLocaleString();
-      document.getElementById('monthly-total-out').textContent = totalMonthlyOut.toLocaleString();
-      document.getElementById('monthly-total-tx-count').textContent = totalMonthlyTx.toLocaleString();
-      document.getElementById('monthly-active-parts').textContent = activePartIds.size.toLocaleString();
-    }
-
-    // 月別日別受払表のCSVエクスポート（画面のマトリクス表と同じ行分け構造で出力）
-    function exportMonthlyCSV() {
-      const targetMonth = document.getElementById('monthly-target-month').value;
-      if (!targetMonth) return;
-
-      const [yearStr, monthStr] = targetMonth.split('-');
-      const year = parseInt(yearStr, 10);
-      const month = parseInt(monthStr, 10);
-      const daysInMonth = new Date(year, month, 0).getDate();
-
-      let csv = "\uFEFF"; // Excel用UTF-8 BOM
-      csv += `=== ${targetMonth} 月間・日別部品在庫受払表 ===\n`;
-
-      // 画面マトリクス表と同じヘッダー行を作成
-      let header = "品目別名2(I列),区分,単位,前月繰越";
-      for (let d = 1; d <= daysInMonth; d++) {
-        header += `,${d}日`;
-      }
-      header += ",当月計,月末在庫\n";
-      csv += header;
-
-      // 画面と同様に昇順ソートして出力
-      const sortedMonthlyParts = [...parts].sort((a, b) => {
+      const sortedMonthlyParts = [...filteredParts].sort((a, b) => {
         const aliasA = String(a.alias2 || a.code || '');
         const aliasB = String(b.alias2 || b.code || '');
         return aliasA.localeCompare(aliasB, undefined, { numeric: true, sensitivity: 'base' });
@@ -1494,6 +1332,11 @@
       const staff = document.getElementById('tx-staff').value.trim();
       const notes = document.getElementById('tx-notes').value.trim();
 
+      // ① 担当者を記憶保存
+      if (staff) {
+        saveStaffPreference(staff);
+      }
+
       const part = parts.find(p => p.id === partId);
       if (!part) {
         showToast('部品を選択してください', false);
@@ -1531,9 +1374,11 @@
       transactions.unshift(newTx);
       saveData();
 
-      // 入力フォームリセット（日付・担当者は保持）
+      // 入力フォームリセット（日付・担当者は保持、種別は出庫を維持）
       document.getElementById('tx-qty').value = '';
       document.getElementById('tx-notes').value = '';
+      document.getElementById('tx-type').value = 'OUT';
+      updateTransactionStyling();
       displayPartQuickInfo();
       populateTransactionPartSelect();
       renderTransactions();
@@ -1672,6 +1517,8 @@
       document.getElementById('quick-type').value = type;
       document.getElementById('quick-qty').value = '';
       document.getElementById('quick-notes').value = '';
+      // ① 記憶している担当者を自動反映
+      document.getElementById('quick-staff').value = savedStaff || '';
       
       const modalTitle = document.getElementById('quick-modal-title');
       const details = document.getElementById('quick-part-details');
@@ -1710,6 +1557,11 @@
       const qty = Number(document.getElementById('quick-qty').value);
       const staff = document.getElementById('quick-staff').value.trim();
       const notes = document.getElementById('quick-notes').value.trim();
+
+      // ① 担当者を記憶保存
+      if (staff) {
+        saveStaffPreference(staff);
+      }
 
       const part = parts.find(p => p.id === partId);
       if (!part) return;
@@ -1926,6 +1778,7 @@
     // 初期化
     window.onload = function() {
       setTodayDate();
+      updateTransactionStyling(); // ② 初期状態で出庫ボタンスタイルを適用
       renderInventory();
     };
   </script>
