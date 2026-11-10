@@ -497,11 +497,26 @@
       <div class="p-5 space-y-4">
         <!-- カメラビュー領域 -->
         <div class="relative bg-slate-950 rounded-xl overflow-hidden aspect-video flex items-center justify-center border border-slate-800">
-          <div id="qr-reader" class="w-full h-full"></div>
-          <div id="camera-loading" class="absolute inset-0 flex flex-col items-center justify-center text-slate-400 text-xs space-y-2 pointer-events-none">
+          <div id="qr-reader" class="w-full h-full flex items-center justify-center"></div>
+          <video id="ipad-native-video" class="w-full h-full object-cover hidden" playsinline muted autoplay></video>
+          <div id="camera-loading" class="absolute inset-0 flex flex-col items-center justify-center text-slate-400 text-xs space-y-2 pointer-events-none p-4 text-center">
             <i class="fa-solid fa-camera text-2xl text-slate-500"></i>
-            <span>カメラを起動中または手動入力をお待ちしています</span>
+            <span id="camera-status-text">カメラを起動中...</span>
           </div>
+          <!-- カメラ切り替え・再起動ボタン (iPad用) -->
+          <button type="button" onclick="toggleCameraFacing()" id="btn-switch-camera" class="absolute bottom-2 right-2 bg-slate-900/80 hover:bg-slate-800 text-white p-2 rounded-lg text-xs backdrop-blur border border-slate-700 shadow flex items-center gap-1.5 z-20">
+            <i class="fa-solid fa-camera-rotate"></i>
+            <span>カメラ切替</span>
+          </button>
+        </div>
+
+        <!-- iPadでカメラが起動しない場合の写真撮影/画像選択ボタン -->
+        <div class="flex items-center justify-between text-xs bg-slate-100 p-2.5 rounded-lg border border-slate-200">
+          <span class="text-slate-600 font-medium">カメラが映らない場合:</span>
+          <label class="cursor-pointer bg-white hover:bg-slate-50 text-indigo-700 font-semibold px-2.5 py-1.5 rounded border border-indigo-200 shadow-sm flex items-center gap-1 transition">
+            <i class="fa-solid fa-image"></i> 写真/ファイルから読取
+            <input type="file" id="qr-file-input" accept="image/*" capture="environment" onchange="handleQRFileScan(event)" class="hidden">
+          </label>
         </div>
 
         <!-- QR読取結果・手動/バーコードリーダー入力ボックス -->
@@ -693,237 +708,179 @@
     }
 
     // ============================
-    // シート1: 部品在庫一覧の描画・更新
-    // ============================
-    function renderInventory() {
-      const tbody = document.getElementById('inventory-table-body');
-      if (!tbody) return;
-
-      const searchVal = (document.getElementById('inv-search')?.value || '').toLowerCase().trim();
-      const statusFilter = document.getElementById('inv-status-filter')?.value || 'ALL';
-      const noInvMsg = document.getElementById('no-inventory-msg');
-
-      // サマリー計算用
-      let totalQty = 0;
-      let lowStockCount = 0;
-      let outStockCount = 0;
-
-      parts.forEach(p => {
-        totalQty += Number(p.currentQty) || 0;
-        if (p.currentQty <= 0) {
-          outStockCount++;
-        } else if (p.currentQty <= p.safety) {
-          lowStockCount++;
-        }
-      });
-
-      const totalPartsEl = document.getElementById('stat-total-parts');
-      const totalQtyEl = document.getElementById('stat-total-qty');
-      const lowStockEl = document.getElementById('stat-low-stock');
-      const outStockEl = document.getElementById('stat-out-of-stock');
-      const badgeWarningEl = document.getElementById('badge-warning-count');
-
-      if (totalPartsEl) totalPartsEl.textContent = parts.length.toLocaleString();
-      if (totalQtyEl) totalQtyEl.textContent = totalQty.toLocaleString();
-      if (lowStockEl) lowStockEl.textContent = lowStockCount.toLocaleString();
-      if (outStockEl) outStockEl.textContent = outStockCount.toLocaleString();
-
-      if (badgeWarningEl) {
-        const totalAlerts = lowStockCount + outStockCount;
-        if (totalAlerts > 0) {
-          badgeWarningEl.textContent = totalAlerts;
-          badgeWarningEl.classList.remove('hidden');
-        } else {
-          badgeWarningEl.classList.add('hidden');
-        }
-      }
-
-      // 絞り込み
-      let filtered = parts.filter(p => {
-        const alias = String(p.alias2 || p.code || '').toLowerCase();
-        const matchesSearch = !searchVal || alias.includes(searchVal);
-
-        let matchesStatus = true;
-        if (statusFilter === 'OUT') {
-          matchesStatus = p.currentQty <= 0;
-        } else if (statusFilter === 'WARNING') {
-          matchesStatus = p.currentQty <= p.safety;
-        } else if (statusFilter === 'NORMAL') {
-          matchesStatus = p.currentQty > p.safety;
-        }
-
-        return matchesSearch && matchesStatus;
-      });
-
-      // 品目別名2（品番）を昇順ソート
-      filtered.sort((a, b) => {
-        const aliasA = String(a.alias2 || a.code || '');
-        const aliasB = String(b.alias2 || b.code || '');
-        return aliasA.localeCompare(aliasB, undefined, { numeric: true, sensitivity: 'base' });
-      });
-
-      tbody.innerHTML = '';
-      if (filtered.length === 0) {
-        if (noInvMsg) noInvMsg.classList.remove('hidden');
-        return;
-      }
-      if (noInvMsg) noInvMsg.classList.add('hidden');
-
-      filtered.forEach(part => {
-        const tr = document.createElement('tr');
-        tr.className = "hover:bg-slate-50/80 transition border-b border-slate-100";
-
-        // 状態 & 充足率の判定
-        let statusBadge = '';
-        let ratio = part.safety > 0 ? Math.round((part.currentQty / part.safety) * 100) : 100;
-        let barColor = 'bg-emerald-500';
-
-        if (part.currentQty <= 0) {
-          statusBadge = '<span class="bg-rose-100 text-rose-700 font-bold px-2.5 py-1 rounded-full text-xs">在庫切</span>';
-          barColor = 'bg-rose-500';
-          ratio = 0;
-        } else if (part.currentQty <= part.safety) {
-          statusBadge = '<span class="bg-amber-100 text-amber-700 font-bold px-2.5 py-1 rounded-full text-xs">要補充</span>';
-          barColor = 'bg-amber-500';
-        } else {
-          statusBadge = '<span class="bg-emerald-100 text-emerald-700 font-semibold px-2.5 py-1 rounded-full text-xs">適正</span>';
-        }
-
-        const barWidth = Math.min(Math.max(ratio, 0), 100);
-
-        tr.innerHTML = `
-          <td class="py-3 px-4 font-mono font-bold text-indigo-700 text-sm">
-            ${escapeHtml(part.alias2 || part.code)}
-          </td>
-          <td class="py-3 px-4 text-right">
-            <div class="flex items-center justify-end space-x-1.5 font-mono">
-              <span class="text-base font-bold text-slate-900">${Number(part.currentQty).toLocaleString()}</span>
-              <span class="text-xs text-slate-400">/ ${Number(part.safety).toLocaleString()} ${escapeHtml(part.unit || '個')}</span>
-            </div>
-          </td>
-          <td class="py-3 px-4 text-center">
-            <div class="w-24 mx-auto">
-              <div class="flex justify-between text-[10px] text-slate-400 mb-0.5">
-                <span>充足率</span>
-                <span class="font-bold text-slate-600">${ratio}%</span>
-              </div>
-              <div class="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden">
-                <div class="${barColor} h-1.5 rounded-full" style="width: ${barWidth}%"></div>
-              </div>
-            </div>
-          </td>
-          <td class="py-3 px-4 text-center">
-            ${statusBadge}
-          </td>
-          <td class="py-3 px-4 text-center">
-            <div class="inline-flex rounded-lg border border-slate-200 bg-white p-0.5 shadow-sm">
-              <button onclick="openQuickModal('${part.id}', 'IN')" class="px-2 py-1 text-xs font-semibold text-emerald-600 hover:bg-emerald-50 rounded transition" title="クイック入荷">
-                <i class="fa-solid fa-plus mr-0.5"></i>入庫
-              </button>
-              <span class="w-[1px] bg-slate-200 my-0.5"></span>
-              <button onclick="openQuickModal('${part.id}', 'OUT')" class="px-2 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50 rounded transition" title="クイック出荷">
-                <i class="fa-solid fa-minus mr-0.5"></i>出庫
-              </button>
-            </div>
-          </td>
-          <td class="py-3 px-4 text-center">
-            <div class="flex items-center justify-center space-x-2">
-              <button onclick="openEditPartModal('${part.id}')" class="text-slate-400 hover:text-indigo-600 p-1.5 rounded transition" title="編集">
-                <i class="fa-solid fa-pen-to-square"></i>
-              </button>
-              <button onclick="confirmDeletePart('${part.id}')" class="text-slate-400 hover:text-rose-600 p-1.5 rounded transition" title="削除">
-                <i class="fa-solid fa-trash-can"></i>
-              </button>
-            </div>
-          </td>
-        `;
-        tbody.appendChild(tr);
-      });
-    }
-
-    // ============================
-    // 削除確認カスタムモーダル処理
-    // ============================
-    let deleteTargetPartId = null;
-
-    function confirmDeletePart(partId) {
-      const part = parts.find(p => p.id === partId);
-      if (!part) return;
-
-      deleteTargetPartId = partId;
-      document.getElementById('delete-target-alias').textContent = part.alias2 || part.code || '-';
-      document.getElementById('delete-confirm-modal').classList.remove('hidden');
-    }
-
-    function closeDeleteModal() {
-      deleteTargetPartId = null;
-      document.getElementById('delete-confirm-modal').classList.add('hidden');
-    }
-
-    function executeDeletePart() {
-      if (!deleteTargetPartId) return;
-
-      // 該当部品の削除
-      parts = parts.filter(p => p.id !== deleteTargetPartId);
-      // 関連取引ログのクリーンアップ
-      transactions = transactions.filter(t => t.partId !== deleteTargetPartId);
-
-      saveData();
-      closeDeleteModal();
-      renderInventory();
-      if (document.getElementById('sheet-monthly') && !document.getElementById('sheet-monthly').classList.contains('hidden')) {
-        renderMonthlyReport();
-      }
-      showToast('部品を削除しました');
-    }
-
-    // ============================
-    // QRコード読み取り & 照合処理
+    // QRコード読み取り & 照合処理 (iPad / iOS最適化)
     // ============================
     let html5QrCode = null;
-    let qrTargetMode = 'inventory'; // 'inventory' or 'transaction'
+    let qrTargetMode = 'inventory'; // 'inventory', 'monthly', 'transaction'
+    let currentCameraFacing = "environment"; // "environment" (背面) or "user" (前面)
+    let nativeStream = null;
+    let nativeScanInterval = null;
 
-    function openQRScanModal(targetMode = 'inventory') {
+    async function openQRScanModal(targetMode = 'inventory') {
       qrTargetMode = targetMode;
       document.getElementById('qr-raw-input').value = '';
       document.getElementById('qr-matched-result').classList.add('hidden');
       document.getElementById('qr-scan-modal').classList.remove('hidden');
 
-      // html5-qrcode のカメラ起動
-      if (typeof Html5Qrcode !== 'undefined') {
-        if (!html5QrCode) {
-          html5QrCode = new Html5Qrcode("qr-reader");
-        }
-        const config = { fps: 10, qrbox: { width: 220, height: 220 } };
-        html5QrCode.start(
-          { facingMode: "environment" },
-          config,
-          (decodedText) => {
-            processScannedData(decodedText);
-          },
-          () => {
-            // スキャン待ち（無視）
+      const statusText = document.getElementById('camera-status-text');
+      if (statusText) statusText.textContent = "カメラを起動中...";
+
+      // iPad / iOS 向けカメラ起動の実行
+      startScannerWithFallback();
+    }
+
+    async function startScannerWithFallback() {
+      stopAllCameraStreams();
+
+      const videoEl = document.getElementById('ipad-native-video');
+      const qrReaderDiv = document.getElementById('qr-reader');
+
+      // 1. iPad/SafariでネイティブBarcodeDetectorが利用可能な場合（iOS 17以降で最も高速かつ確実）
+      if ('BarcodeDetector' in window) {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: { ideal: currentCameraFacing },
+              width: { ideal: 1280 },
+              height: { ideal: 720 }
+            },
+            audio: false
+          });
+
+          nativeStream = stream;
+          if (videoEl) {
+            videoEl.srcObject = stream;
+            videoEl.setAttribute('playsinline', 'true'); // iOS必須設定
+            videoEl.classList.remove('hidden');
+            if (qrReaderDiv) qrReaderDiv.classList.add('hidden');
+            await videoEl.play();
+
+            const barcodeDetector = new BarcodeDetector({ formats: ['qr_code'] });
+            const camLoading = document.getElementById('camera-loading');
+            if (camLoading) camLoading.classList.add('hidden');
+
+            nativeScanInterval = setInterval(async () => {
+              if (videoEl.readyState >= 2) {
+                try {
+                  const barcodes = await barcodeDetector.detect(videoEl);
+                  if (barcodes.length > 0) {
+                    processScannedData(barcodes[0].rawValue);
+                  }
+                } catch (e) {
+                  // フレームスキャン失敗は無視
+                }
+              }
+            }, 300);
+            return;
           }
-        ).catch(err => {
-          console.warn("Camera start failed/permission denied:", err);
+        } catch (nativeErr) {
+          console.warn("Native BarcodeDetector camera start failed, falling back to html5-qrcode:", nativeErr);
+        }
+      }
+
+      // 2. フォールバック: html5-qrcode による読取
+      if (videoEl) videoEl.classList.add('hidden');
+      if (qrReaderDiv) qrReaderDiv.classList.remove('hidden');
+
+      if (typeof Html5Qrcode !== 'undefined') {
+        try {
+          if (!html5QrCode) {
+            html5QrCode = new Html5Qrcode("qr-reader");
+          }
+
+          // iPad向けにアスペクト比とビデオ設定を最適化
+          const config = {
+            fps: 15,
+            qrbox: (viewfinderWidth, viewfinderHeight) => {
+              const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+              return { width: Math.floor(minEdge * 0.75), height: Math.floor(minEdge * 0.75) };
+            },
+            aspectRatio: 1.7777778,
+            videoConstraints: {
+              facingMode: { ideal: currentCameraFacing },
+              focusMode: "continuous"
+            }
+          };
+
+          await html5QrCode.start(
+            { facingMode: currentCameraFacing },
+            config,
+            (decodedText) => {
+              processScannedData(decodedText);
+            },
+            () => {}
+          );
+
+          const camLoading = document.getElementById('camera-loading');
+          if (camLoading) camLoading.classList.add('hidden');
+
+        } catch (err) {
+          console.warn("html5-qrcode camera start failed:", err);
           const camLoading = document.getElementById('camera-loading');
           if (camLoading) {
-            camLoading.innerHTML = '<span class="text-rose-400 text-xs text-center px-4">カメラを起動できませんでした。<br>下の入力欄またはハンディリーダーから直接入力してください。</span>';
+            camLoading.classList.remove('hidden');
+            camLoading.innerHTML = `
+              <span class="text-rose-400 text-xs px-4">
+                カメラの起動に失敗しました（Safariのカメラ権限が「拒否」になっている可能性があります）。<br>
+                下の「写真/ファイルから読取」または直接入力をお試しください。
+              </span>
+            `;
           }
-        });
+        }
+      }
+    }
+
+    // カメラの前後切り替え（iPadでリア/フロントが逆になった場合の対応）
+    function toggleCameraFacing() {
+      currentCameraFacing = (currentCameraFacing === "environment") ? "user" : "environment";
+      startScannerWithFallback();
+    }
+
+    function stopAllCameraStreams() {
+      if (nativeScanInterval) {
+        clearInterval(nativeScanInterval);
+        nativeScanInterval = null;
+      }
+      if (nativeStream) {
+        nativeStream.getTracks().forEach(track => track.stop());
+        nativeStream = null;
+      }
+      const videoEl = document.getElementById('ipad-native-video');
+      if (videoEl) {
+        videoEl.srcObject = null;
+        videoEl.classList.add('hidden');
+      }
+      if (html5QrCode && html5QrCode.isScanning) {
+        html5QrCode.stop().catch(() => {});
       }
     }
 
     function closeQRScanModal() {
-      if (html5QrCode && html5QrCode.isScanning) {
-        html5QrCode.stop().then(() => {
-          document.getElementById('qr-scan-modal').classList.add('hidden');
-        }).catch(() => {
-          document.getElementById('qr-scan-modal').classList.add('hidden');
-        });
-      } else {
-        document.getElementById('qr-scan-modal').classList.add('hidden');
+      stopAllCameraStreams();
+      document.getElementById('qr-scan-modal').classList.add('hidden');
+      const camLoading = document.getElementById('camera-loading');
+      if (camLoading) camLoading.classList.remove('hidden');
+    }
+
+    // iPadで写真撮影または保存画像からQRをスキャンする処理
+    function handleQRFileScan(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      if (!html5QrCode) {
+        html5QrCode = new Html5Qrcode("qr-reader");
       }
+
+      html5QrCode.scanFile(file, true)
+        .then(decodedText => {
+          processScannedData(decodedText);
+        })
+        .catch(err => {
+          showToast('画像からQRコードを検出できませんでした', false);
+        })
+        .finally(() => {
+          event.target.value = '';
+        });
     }
 
     // QRテキストから品番を抽出・照合
