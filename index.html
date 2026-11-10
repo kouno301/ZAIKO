@@ -1133,6 +1133,168 @@
 
         const endOfMonthQty = part.currentQty - qtyAfterMonth;
         const startOfMonthQty = endOfMonthQty - sumIn + sumOut - sumAdj;
+
+        totalMonthlyIn += sumIn;
+        totalMonthlyOut += sumOut;
+        totalMonthlyTx += monthTx.length;
+        if (sumOut > 0) activePartIds.add(part.id);
+
+        const hasAdj = sumAdj !== 0;
+        const rowSpan = hasAdj ? 3 : 2;
+
+        // 1. 入庫行
+        const trIn = document.createElement('tr');
+        trIn.className = "hover:bg-slate-50/60 border-b border-slate-100";
+
+        let inCells = `
+          <td rowspan="${rowSpan}" class="py-2 px-3 font-mono font-bold text-indigo-700 bg-white sticky left-0 z-10 border-r border-slate-300 align-middle">
+            ${escapeHtml(part.alias2 || part.code)}
+          </td>
+          <td class="py-1 px-2 text-center bg-emerald-50 text-emerald-800 font-bold sticky left-[170px] z-10 border-r border-slate-300">
+            入庫
+          </td>
+          <td rowspan="${rowSpan}" class="py-2 px-2 text-center bg-white border-r border-slate-200 text-slate-500 align-middle">
+            ${escapeHtml(part.unit || '個')}
+          </td>
+          <td rowspan="${rowSpan}" class="py-2 px-2.5 text-right font-mono font-bold text-slate-700 bg-slate-50 border-r border-slate-300 align-middle">
+            ${startOfMonthQty.toLocaleString()}
+          </td>`;
+
+        for (let d = 1; d <= daysInMonth; d++) {
+          const dIn = dailyMap[d].in || 0;
+          inCells += `
+            <td class="p-0.5 text-center border-r border-slate-100 font-mono ${dIn > 0 ? 'bg-emerald-50/70 font-black text-emerald-700 text-base sm:text-lg leading-none tracking-tighter' : 'text-slate-300 text-xs'}">
+              ${dIn > 0 ? `+${dIn}` : '-'}
+            </td>`;
+        }
+
+        inCells += `
+          <td class="py-1.5 px-3 text-right font-mono font-bold text-emerald-700 bg-emerald-50/40 border-r border-slate-300 text-sm">
+            +${sumIn.toLocaleString()}
+          </td>
+          <td rowspan="${rowSpan}" class="py-2 px-3 text-right font-mono font-bold text-indigo-900 bg-indigo-50/60 text-base align-middle">
+            ${endOfMonthQty.toLocaleString()}
+          </td>`;
+        trIn.innerHTML = inCells;
+        tbody.appendChild(trIn);
+
+        // 2. 出庫行
+        const trOut = document.createElement('tr');
+        trOut.className = "hover:bg-slate-50/60 border-b border-slate-200";
+
+        let outCells = `
+          <td class="py-1 px-2 text-center bg-rose-50 text-rose-800 font-bold sticky left-[170px] z-10 border-r border-slate-300">
+            出庫
+          </td>`;
+
+        for (let d = 1; d <= daysInMonth; d++) {
+          const dOut = dailyMap[d].out || 0;
+          outCells += `
+            <td class="p-0.5 text-center border-r border-slate-100 font-mono ${dOut > 0 ? 'bg-rose-50/70 font-black text-rose-700 text-base sm:text-lg leading-none tracking-tighter' : 'text-slate-300 text-xs'}">
+              ${dOut > 0 ? `-${dOut}` : '-'}
+            </td>`;
+        }
+
+        outCells += `
+          <td class="py-1.5 px-3 text-right font-mono font-bold text-rose-700 bg-rose-50/40 border-r border-slate-300 text-sm">
+            -${sumOut.toLocaleString()}
+          </td>`;
+        trOut.innerHTML = outCells;
+        tbody.appendChild(trOut);
+
+        // 3. 調整行（棚卸調整がある場合）
+        if (hasAdj) {
+          const trAdj = document.createElement('tr');
+          trAdj.className = "hover:bg-slate-50/60 border-b border-slate-300";
+
+          let adjCells = `
+            <td class="py-1 px-2 text-center bg-blue-50 text-blue-800 font-bold sticky left-[170px] z-10 border-r border-slate-300">
+              調整
+            </td>`;
+
+          for (let d = 1; d <= daysInMonth; d++) {
+            const dAdj = dailyMap[d].adj || 0;
+            adjCells += `
+              <td class="p-0.5 text-center border-r border-slate-100 font-mono ${dAdj !== 0 ? 'bg-blue-50/70 font-black text-blue-700 text-base sm:text-lg leading-none tracking-tighter' : 'text-slate-300 text-xs'}">
+                ${dAdj !== 0 ? (dAdj > 0 ? `+${dAdj}` : dAdj) : '-'}
+              </td>`;
+          }
+
+          adjCells += `
+            <td class="py-1.5 px-3 text-right font-mono font-bold text-blue-700 bg-blue-50/40 border-r border-slate-300 text-sm">
+              ${sumAdj > 0 ? `+${sumAdj}` : sumAdj}
+            </td>`;
+          trAdj.innerHTML = adjCells;
+          tbody.appendChild(trAdj);
+        }
+      });
+
+      // サマリーカードの更新
+      document.getElementById('monthly-total-in').textContent = totalMonthlyIn.toLocaleString();
+      document.getElementById('monthly-total-out').textContent = totalMonthlyOut.toLocaleString();
+      document.getElementById('monthly-total-tx-count').textContent = totalMonthlyTx.toLocaleString();
+      document.getElementById('monthly-active-parts').textContent = activePartIds.size.toLocaleString();
+    }
+
+    // 月間受払表のCSVエクスポート
+    function exportMonthlyCSV() {
+      const targetMonth = document.getElementById('monthly-target-month').value;
+      if (!targetMonth) {
+        showToast('対象年月を選択してください', false);
+        return;
+      }
+
+      const [yearStr, monthStr] = targetMonth.split('-');
+      const year = parseInt(yearStr, 10);
+      const month = parseInt(monthStr, 10);
+      const daysInMonth = new Date(year, month, 0).getDate();
+
+      let csv = "\uFEFF"; // UTF-8 BOM
+      csv += `月間日別在庫受払表 (${targetMonth})\n`;
+      csv += "品目別名2(I列),区分,単位,前月繰越";
+      for (let d = 1; d <= daysInMonth; d++) {
+        csv += `,${d}日`;
+      }
+      csv += ",当月計,月末在庫\n";
+
+      const sortedParts = [...parts].sort((a, b) => {
+        const aliasA = String(a.alias2 || a.code || '');
+        const aliasB = String(b.alias2 || b.code || '');
+        return aliasA.localeCompare(aliasB, undefined, { numeric: true, sensitivity: 'base' });
+      });
+
+      sortedParts.forEach(part => {
+        const monthTx = transactions.filter(t => t.partId === part.id && t.date.startsWith(targetMonth));
+        const dailyMap = {};
+        for (let d = 1; d <= daysInMonth; d++) {
+          dailyMap[d] = { in: 0, out: 0, adj: 0 };
+        }
+
+        let sumIn = 0, sumOut = 0, sumAdj = 0;
+        monthTx.forEach(t => {
+          const dayNum = parseInt(t.date.split('-')[2], 10);
+          if (t.type === 'IN') {
+            sumIn += Number(t.qty);
+            if (dailyMap[dayNum]) dailyMap[dayNum].in += Number(t.qty);
+          } else if (t.type === 'OUT') {
+            sumOut += Number(t.qty);
+            if (dailyMap[dayNum]) dailyMap[dayNum].out += Number(t.qty);
+          } else if (t.type === 'ADJ') {
+            sumAdj += Number(t.qty);
+            if (dailyMap[dayNum]) dailyMap[dayNum].adj += Number(t.qty);
+          }
+        });
+
+        const afterTx = transactions.filter(t => t.partId === part.id && t.date.slice(0, 7) > targetMonth);
+        let qtyAfterMonth = 0;
+        afterTx.forEach(t => {
+          if (t.type === 'IN') qtyAfterMonth += t.qty;
+          else if (t.type === 'OUT') qtyAfterMonth -= t.qty;
+          else if (t.type === 'ADJ') qtyAfterMonth += t.qty;
+        });
+
+        const endOfMonthQty = part.currentQty - qtyAfterMonth;
+        const startOfMonthQty = endOfMonthQty - sumIn + sumOut - sumAdj;
         const aliasStr = `"${part.alias2 || part.code}"`;
         const unitStr = `"${part.unit || '個'}"`;
 
