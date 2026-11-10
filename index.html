@@ -163,34 +163,42 @@
         </div>
       </div>
 
-      <!-- アクション & 検索フィルターバー -->
-      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-3 justify-between items-stretch md:items-center">
-        <div class="flex flex-1 flex-col sm:flex-row gap-2">
+      <!-- アクション & 検索フィルターバー（全要素の高さを統一して整列） -->
+      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-3 justify-between items-stretch md:items-end">
+        <div class="flex flex-1 flex-col sm:flex-row gap-2 items-end">
           <!-- 検索インプット & QR読取ボタン -->
-          <div class="relative flex-1 flex gap-2">
-            <div class="relative flex-1">
-              <i class="fa-solid fa-search absolute left-3 top-3 text-slate-400 text-sm"></i>
-              <input type="text" id="inv-search" oninput="renderInventory()" placeholder="品目別名2(品番)で検索..." class="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+          <div class="flex-1 w-full flex flex-col">
+            <label class="block text-xs font-semibold text-slate-700 mb-1">品目別名2 (品番)</label>
+            <div class="relative flex gap-2">
+              <div class="relative flex-1">
+                <i class="fa-solid fa-search absolute left-3 top-3 text-slate-400 text-sm"></i>
+                <input type="text" id="inv-search" oninput="renderInventory()" placeholder="品番で検索..." class="w-full h-10 pl-9 pr-3 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+              </div>
+              <button onclick="openQRScanModal('inventory')" class="h-10 bg-indigo-600 hover:bg-indigo-700 text-white px-3 rounded-lg text-sm font-medium flex items-center justify-center shadow-sm transition whitespace-nowrap" title="QRコード読み取りで検索">
+                <i class="fa-solid fa-qrcode mr-1.5 text-base"></i>QR読取
+              </button>
             </div>
-            <button onclick="openQRScanModal('inventory')" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-sm font-medium flex items-center shadow-sm transition whitespace-nowrap" title="QRコード読み取りで検索">
-              <i class="fa-solid fa-qrcode mr-1.5 text-base"></i>QR読取
-            </button>
           </div>
           <!-- 状態フィルター -->
-          <select id="inv-status-filter" onchange="renderInventory()" class="border border-slate-300 rounded-lg text-sm px-3 py-2 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
-            <option value="ALL">全ての状態</option>
-            <option value="OUT">欠品のみ (0点)</option>
-            <option value="WARNING">要補充・在庫切れ</option>
-            <option value="NORMAL">適正在庫のみ</option>
-          </select>
+          <div class="w-full sm:w-auto flex flex-col">
+            <label class="block text-xs font-semibold text-slate-700 mb-1">状態</label>
+            <select id="inv-status-filter" onchange="renderInventory()" class="h-10 border border-slate-300 rounded-lg text-sm px-3 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              <option value="ALL">全ての状態</option>
+              <option value="OUT">欠品のみ (0点)</option>
+              <option value="WARNING">要補充・在庫切れ</option>
+              <option value="NORMAL">適正在庫のみ</option>
+            </select>
+          </div>
         </div>
-        <div>
-          <label class="block text-xs font-semibold text-slate-700 mb-1">単位</label>
-          <input type="text" id="part-unit" placeholder="個, 本, kg" value="個" class="w-full text-sm border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500">
-        </div>
-        <div>
-          <label class="block text-xs font-semibold text-slate-700 mb-1">安全在庫数 (発注点 / GH列メモ2)</label>
-          <input type="number" id="part-safety" min="0" value="5" class="w-full text-sm border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500">
+        <div class="flex gap-2 items-end">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">単位</label>
+            <input type="text" id="part-unit-filter" placeholder="個" value="個" class="w-20 h-10 text-center text-sm border border-slate-300 rounded-lg px-2 focus:ring-2 focus:ring-indigo-500">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">安全在庫 (GH列)</label>
+            <input type="number" id="part-safety-filter" min="0" value="5" class="w-28 sm:w-32 h-10 text-right text-sm border border-slate-300 rounded-lg px-3 focus:ring-2 focus:ring-indigo-500">
+          </div>
         </div>
       </div>
 
