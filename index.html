@@ -763,6 +763,234 @@
     }
 
     // ============================
+    // シート1: 部品在庫一覧テーブルの描画
+    // ============================
+    function renderInventory() {
+      const tbody = document.getElementById('inventory-table-body');
+      const search = (document.getElementById('inv-search')?.value || '').toLowerCase().trim();
+      const statusFilter = document.getElementById('inv-status-filter')?.value || 'ALL';
+      const noInvMsg = document.getElementById('no-inventory-msg');
+
+      if (!tbody) return;
+
+      // 集計メトリクス用
+      let totalParts = parts.length;
+      let totalQty = 0;
+      let lowStockCount = 0;
+      let outOfStockCount = 0;
+
+      parts.forEach(p => {
+        const qty = Number(p.currentQty) || 0;
+        const safety = Number(p.safety) || 0;
+        totalQty += qty;
+        if (qty <= 0) {
+          outOfStockCount++;
+          lowStockCount++;
+        } else if (qty <= safety) {
+          lowStockCount++;
+        }
+      });
+
+      // サマリーカードの数値更新
+      const statTotalParts = document.getElementById('stat-total-parts');
+      const statTotalQty = document.getElementById('stat-total-qty');
+      const statLowStock = document.getElementById('stat-low-stock');
+      const statOutOfStock = document.getElementById('stat-out-of-stock');
+      const badgeWarn = document.getElementById('badge-warning-count');
+
+      if (statTotalParts) statTotalParts.textContent = totalParts.toLocaleString();
+      if (statTotalQty) statTotalQty.textContent = totalQty.toLocaleString();
+      if (statLowStock) statLowStock.textContent = lowStockCount.toLocaleString();
+      if (statOutOfStock) statOutOfStock.textContent = outOfStockCount.toLocaleString();
+
+      if (badgeWarn) {
+        if (lowStockCount > 0) {
+          badgeWarn.textContent = lowStockCount;
+          badgeWarn.classList.remove('hidden');
+        } else {
+          badgeWarn.classList.add('hidden');
+        }
+      }
+
+      // フィルタリング
+      let filtered = parts.filter(p => {
+        const alias = String(p.alias2 || p.code || '').toLowerCase();
+        const matchesSearch = !search || alias.includes(search);
+
+        const qty = Number(p.currentQty) || 0;
+        const safety = Number(p.safety) || 0;
+
+        let matchesStatus = true;
+        if (statusFilter === 'OUT') {
+          matchesStatus = (qty <= 0);
+        } else if (statusFilter === 'WARNING') {
+          matchesStatus = (qty <= safety);
+        } else if (statusFilter === 'NORMAL') {
+          matchesStatus = (qty > safety);
+        }
+
+        return matchesSearch && matchesStatus;
+      });
+
+      // 品番（品目別名2）を昇順ソート
+      filtered.sort((a, b) => {
+        const aliasA = String(a.alias2 || a.code || '');
+        const aliasB = String(b.alias2 || b.code || '');
+        return aliasA.localeCompare(aliasB, undefined, { numeric: true, sensitivity: 'base' });
+      });
+
+      tbody.innerHTML = '';
+      if (filtered.length === 0) {
+        if (noInvMsg) noInvMsg.classList.remove('hidden');
+        return;
+      }
+      if (noInvMsg) noInvMsg.classList.add('hidden');
+
+      filtered.forEach(part => {
+        const tr = document.createElement('tr');
+        tr.className = "hover:bg-slate-50 transition border-b border-slate-100 text-sm";
+
+        const qty = Number(part.currentQty) || 0;
+        const safety = Number(part.safety) || 0;
+
+        // 充足率計算（安全在庫に対する割合）
+        let fillRate = 100;
+        if (safety > 0) {
+          fillRate = Math.min(Math.round((qty / safety) * 100), 200);
+        } else if (qty <= 0) {
+          fillRate = 0;
+        }
+
+        // 状態バッジ
+        let statusBadge = '';
+        let barColor = 'bg-emerald-500';
+
+        if (qty <= 0) {
+          statusBadge = '<span class="bg-rose-100 text-rose-800 text-xs px-2.5 py-1 rounded-full font-bold">在庫切れ</span>';
+          barColor = 'bg-rose-500';
+        } else if (qty <= safety) {
+          statusBadge = '<span class="bg-amber-100 text-amber-800 text-xs px-2.5 py-1 rounded-full font-bold">要補充</span>';
+          barColor = 'bg-amber-500';
+        } else {
+          statusBadge = '<span class="bg-emerald-100 text-emerald-800 text-xs px-2.5 py-1 rounded-full font-bold">適正</span>';
+          barColor = 'bg-emerald-500';
+        }
+
+        tr.innerHTML = `
+          <td class="py-3.5 px-4 font-mono font-bold text-indigo-700">
+            ${escapeHtml(part.alias2 || part.code)}
+          </td>
+          <td class="py-3.5 px-4 text-right">
+            <div class="flex items-center justify-end space-x-1.5 font-mono">
+              <button onclick="adjustStock('${part.id}', -1)" title="-1 調整" class="w-6 h-6 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold flex items-center justify-center text-xs transition">
+                <i class="fa-solid fa-minus"></i>
+              </button>
+              <span class="font-bold text-base ${qty <= safety ? 'text-rose-600' : 'text-slate-800'} px-1">${qty.toLocaleString()}</span>
+              <button onclick="adjustStock('${part.id}', 1)" title="+1 調整" class="w-6 h-6 rounded bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold flex items-center justify-center text-xs transition">
+                <i class="fa-solid fa-plus"></i>
+              </button>
+              <span class="text-xs text-slate-400 font-normal">/ ${safety} ${escapeHtml(part.unit || '個')}</span>
+            </div>
+          </td>
+          <td class="py-3.5 px-4 text-center">
+            <div class="w-24 mx-auto">
+              <div class="flex justify-between text-[10px] text-slate-400 font-mono mb-0.5">
+                <span>${fillRate}%</span>
+              </div>
+              <div class="w-full bg-slate-200 h-2 rounded-full overflow-hidden">
+                <div class="${barColor} h-full transition-all duration-300" style="width: ${Math.min(fillRate, 100)}%"></div>
+              </div>
+            </div>
+          </td>
+          <td class="py-3.5 px-4 text-center">${statusBadge}</td>
+          <td class="py-3.5 px-4 text-center">
+            <div class="inline-flex space-x-1.5">
+              <button onclick="openQuickModal('${part.id}', 'IN')" class="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-semibold rounded text-xs border border-emerald-200 transition">
+                <i class="fa-solid fa-arrow-down mr-1"></i>入庫
+              </button>
+              <button onclick="openQuickModal('${part.id}', 'OUT')" class="px-2.5 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold rounded text-xs border border-rose-200 transition">
+                <i class="fa-solid fa-arrow-up mr-1"></i>出庫
+              </button>
+            </div>
+          </td>
+          <td class="py-3.5 px-4 text-center">
+            <div class="inline-flex space-x-1">
+              <button onclick="openEditPartModal('${part.id}')" title="編集" class="p-1.5 text-slate-400 hover:text-indigo-600 transition">
+                <i class="fa-solid fa-pen text-xs"></i>
+              </button>
+              <button onclick="confirmDeletePart('${part.id}')" title="削除" class="p-1.5 text-slate-400 hover:text-rose-600 transition">
+                <i class="fa-solid fa-trash-can text-xs"></i>
+              </button>
+            </div>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    // 在庫クイックステップ加減 (+1 / -1)
+    function adjustStock(partId, delta) {
+      const part = parts.find(p => p.id === partId);
+      if (!part) return;
+
+      const newQty = (Number(part.currentQty) || 0) + delta;
+      if (newQty < 0) {
+        showToast('在庫数をマイナスにはできません', false);
+        return;
+      }
+
+      part.currentQty = newQty;
+      transactions.unshift({
+        id: 'T' + Date.now().toString().slice(-6),
+        date: new Date().toISOString().split('T')[0],
+        partId,
+        type: delta > 0 ? 'IN' : 'OUT',
+        qty: Math.abs(delta),
+        staff: savedStaff || '直接調整',
+        notes: `一覧での${delta > 0 ? '+1' : '-1'}クイック調整`
+      });
+
+      saveData();
+      renderInventory();
+      if (document.getElementById('sheet-monthly') && !document.getElementById('sheet-monthly').classList.contains('hidden')) {
+        renderMonthlyReport();
+      }
+    }
+
+    // 部品削除確認モーダル処理
+    let deleteTargetPartId = null;
+
+    function confirmDeletePart(partId) {
+      const part = parts.find(p => p.id === partId);
+      if (!part) return;
+
+      deleteTargetPartId = partId;
+      document.getElementById('delete-target-alias').textContent = part.alias2 || part.code || '-';
+      document.getElementById('delete-confirm-modal').classList.remove('hidden');
+    }
+
+    function closeDeleteModal() {
+      deleteTargetPartId = null;
+      document.getElementById('delete-confirm-modal').classList.add('hidden');
+    }
+
+    function executeDeletePart() {
+      if (!deleteTargetPartId) return;
+
+      const targetId = deleteTargetPartId;
+      parts = parts.filter(p => p.id !== targetId);
+      transactions = transactions.filter(t => t.partId !== targetId);
+
+      saveData();
+      closeDeleteModal();
+      renderInventory();
+      if (document.getElementById('sheet-monthly') && !document.getElementById('sheet-monthly').classList.contains('hidden')) {
+        renderMonthlyReport();
+      }
+      showToast('部品を削除しました');
+    }
+
+    // ============================
     // QRコード読み取り & 照合処理 (iPad / iOS最適化)
     // ============================
     let html5QrCode = null;
