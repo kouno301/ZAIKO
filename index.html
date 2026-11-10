@@ -32,6 +32,55 @@
     ::-webkit-scrollbar-thumb:hover {
       background: #94a3b8;
     }
+
+    /* QRスキャナーの中央固定 & iPadでのズレ防止スタイル */
+    #qr-reader {
+      width: 100% !important;
+      height: 100% !important;
+      border: none !important;
+      display: flex !important;
+      justify-content: center !important;
+      align-items: center !important;
+      position: relative;
+    }
+    #qr-reader video {
+      width: 100% !important;
+      height: 100% !important;
+      object-fit: cover !important;
+      border-radius: 0.75rem;
+    }
+    #qr-reader__scan_region {
+      display: flex !important;
+      justify-content: center !important;
+      align-items: center !important;
+    }
+    #qr-reader__dashboard {
+      display: none !important; /* ライブラリ内部の余計な下部ダッシュボードを非表示化 */
+    }
+    /* スキャンターゲットガイド（画面中央の照準枠） */
+    .qr-scan-guide {
+      position: absolute;
+      width: 220px;
+      height: 220px;
+      border: 2px dashed rgba(99, 102, 241, 0.8);
+      border-radius: 16px;
+      pointer-events: none;
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
+      z-index: 15;
+    }
+    .qr-scan-guide::before {
+      content: "";
+      position: absolute;
+      top: -2px; left: -2px; right: -2px; bottom: -2px;
+      border: 3px solid #6366f1;
+      border-radius: 16px;
+      clip-path: polygon(
+        0% 0%, 25% 0%, 25% 6px, 6px 6px, 6px 25%, 0% 25%,
+        100% 0%, 100% 25%, calc(100% - 6px) 25%, calc(100% - 6px) 6px, 75% 6px, 75% 0%,
+        100% 100%, 75% 100%, 75% calc(100% - 6px), calc(100% - 6px) calc(100% - 6px), calc(100% - 6px) 75%, 100% 75%,
+        0% 100%, 0% 75%, 6px 75%, 6px calc(100% - 6px), 25% calc(100% - 6px), 25% 100%
+      );
+    }
   </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen flex flex-col">
@@ -495,16 +544,22 @@
       </div>
 
       <div class="p-5 space-y-4">
-        <!-- カメラビュー領域 -->
-        <div class="relative bg-slate-950 rounded-xl overflow-hidden aspect-video flex items-center justify-center border border-slate-800">
+        <!-- カメラビュー領域 (中央揃え & スキャン照準ガイド) -->
+        <div class="relative bg-slate-950 rounded-xl overflow-hidden h-[300px] sm:h-[340px] flex items-center justify-center border border-slate-800">
           <div id="qr-reader" class="w-full h-full flex items-center justify-center"></div>
           <video id="ipad-native-video" class="w-full h-full object-cover hidden" playsinline muted autoplay></video>
-          <div id="camera-loading" class="absolute inset-0 flex flex-col items-center justify-center text-slate-400 text-xs space-y-2 pointer-events-none p-4 text-center">
-            <i class="fa-solid fa-camera text-2xl text-slate-500"></i>
+          
+          <!-- 照準ガイド枠（常にカメラ中央に固定） -->
+          <div class="qr-scan-guide flex items-center justify-center">
+            <span class="text-[11px] font-semibold text-white/90 bg-indigo-900/80 px-2 py-0.5 rounded shadow">中央に合わせてください</span>
+          </div>
+
+          <div id="camera-loading" class="absolute inset-0 flex flex-col items-center justify-center text-slate-400 text-xs space-y-2 pointer-events-none p-4 text-center z-20 bg-slate-950/80">
+            <i class="fa-solid fa-camera text-2xl text-slate-500 animate-pulse"></i>
             <span id="camera-status-text">カメラを起動中...</span>
           </div>
           <!-- カメラ切り替え・再起動ボタン (iPad用) -->
-          <button type="button" onclick="toggleCameraFacing()" id="btn-switch-camera" class="absolute bottom-2 right-2 bg-slate-900/80 hover:bg-slate-800 text-white p-2 rounded-lg text-xs backdrop-blur border border-slate-700 shadow flex items-center gap-1.5 z-20">
+          <button type="button" onclick="toggleCameraFacing()" id="btn-switch-camera" class="absolute bottom-3 right-3 bg-slate-900/80 hover:bg-slate-800 text-white px-2.5 py-1.5 rounded-lg text-xs backdrop-blur border border-slate-700 shadow flex items-center gap-1.5 z-20">
             <i class="fa-solid fa-camera-rotate"></i>
             <span>カメラ切替</span>
           </button>
@@ -770,7 +825,7 @@
                   // フレームスキャン失敗は無視
                 }
               }
-            }, 300);
+            }, 250);
             return;
           }
         } catch (nativeErr) {
@@ -788,14 +843,10 @@
             html5QrCode = new Html5Qrcode("qr-reader");
           }
 
-          // iPad向けにアスペクト比とビデオ設定を最適化
+          // iPad画面中央にスキャン領域を正しく固定
           const config = {
             fps: 15,
-            qrbox: (viewfinderWidth, viewfinderHeight) => {
-              const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
-              return { width: Math.floor(minEdge * 0.75), height: Math.floor(minEdge * 0.75) };
-            },
-            aspectRatio: 1.7777778,
+            qrbox: { width: 220, height: 220 }, // 中央固定サイズ
             videoConstraints: {
               facingMode: { ideal: currentCameraFacing },
               focusMode: "continuous"
