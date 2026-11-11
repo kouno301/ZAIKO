@@ -166,13 +166,16 @@
       <!-- アクション & 検索フィルターバー（全要素の高さを統一して整列） -->
       <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-3 justify-between items-stretch md:items-end">
         <div class="flex flex-1 flex-col sm:flex-row gap-2 items-end">
-          <!-- 検索インプット & QR読取ボタン -->
+          <!-- 検索インプット & クリアボタン & QR読取ボタン -->
           <div class="flex-1 w-full flex flex-col">
             <label class="block text-xs font-semibold text-slate-700 mb-1">品目別名2 (品番)</label>
             <div class="relative flex gap-2">
               <div class="relative flex-1">
                 <i class="fa-solid fa-search absolute left-3 top-3 text-slate-400 text-sm"></i>
-                <input type="text" id="inv-search" oninput="renderInventory()" placeholder="品番で検索..." class="w-full h-10 pl-9 pr-3 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                <input type="text" id="inv-search" oninput="toggleSearchClearBtn('inv-search', 'inv-clear-btn'); renderInventory();" placeholder="品番で検索..." class="w-full h-10 pl-9 pr-8 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                <button type="button" id="inv-clear-btn" onclick="clearInvSearch()" class="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 hidden" title="検索内容をクリア">
+                  <i class="fa-solid fa-circle-xmark text-sm"></i>
+                </button>
               </div>
               <button onclick="openQRScanModal('inventory')" class="h-10 bg-indigo-600 hover:bg-indigo-700 text-white px-3 rounded-lg text-sm font-medium flex items-center justify-center shadow-sm transition whitespace-nowrap" title="QRコード読み取りで検索">
                 <i class="fa-solid fa-qrcode mr-1.5 text-base"></i>QR読取
@@ -241,14 +244,14 @@
             </label>
             <input type="month" id="monthly-target-month" onchange="renderMonthlyReport()" class="border border-slate-300 rounded-lg text-sm px-3 py-2 bg-white font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500">
             <button onclick="setCurrentMonth()" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium px-2.5 py-2 rounded-lg transition border border-slate-200">
-              当月
-            </button>
-          </div>
-          <!-- シート2 品番検索 & QR読取ボタン -->
+          <!-- シート2 品番検索 & クリアボタン & QR読取ボタン -->
           <div class="relative flex items-center gap-2">
             <div class="relative">
               <i class="fa-solid fa-search absolute left-3 top-2.5 text-slate-400 text-xs"></i>
-              <input type="text" id="monthly-search-query" oninput="renderMonthlyReport()" placeholder="品目で絞り込み..." class="w-44 sm:w-56 pl-8 pr-3 py-1.5 border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              <input type="text" id="monthly-search-query" oninput="toggleSearchClearBtn('monthly-search-query', 'monthly-clear-btn'); renderMonthlyReport();" placeholder="品目で絞り込み..." class="w-44 sm:w-56 pl-8 pr-7 py-1.5 border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500">
+              <button type="button" id="monthly-clear-btn" onclick="clearMonthlySearch()" class="absolute right-2 top-2 text-slate-400 hover:text-slate-600 hidden" title="絞り込みをクリア">
+                <i class="fa-solid fa-circle-xmark text-xs"></i>
+              </button>
             </div>
             <button onclick="openQRScanModal('monthly')" class="bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 py-1.5 rounded-lg text-xs font-medium flex items-center shadow-sm transition whitespace-nowrap" title="QRコード読み取りで部品を絞込">
               <i class="fa-solid fa-qrcode mr-1 text-sm"></i>QR読取
@@ -322,16 +325,22 @@
       
       <!-- 入出庫入力フォームカード -->
       <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-        <h2 class="text-base font-bold text-slate-800 mb-4 flex items-center">
-          <i class="fa-solid fa-pen-to-square text-indigo-600 mr-2"></i>入出庫データ伝票登録
-        </h2>
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-base font-bold text-slate-800 flex items-center">
+            <i class="fa-solid fa-pen-to-square text-indigo-600 mr-2"></i>入出庫データ伝票登録
+          </h2>
+          <!-- 入力クリアボタン -->
+          <button type="button" onclick="clearTransactionForm()" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-3 py-1.5 rounded-lg border border-slate-200 transition flex items-center shadow-sm">
+            <i class="fa-solid fa-eraser mr-1.5 text-slate-500"></i>入力クリア
+          </button>
+        </div>
         <form id="tx-form" onsubmit="handleTransactionSubmit(event)" class="grid grid-cols-1 md:grid-cols-4 sm:grid-cols-2 gap-4">
           <!-- 日時 -->
           <div>
             <label class="block text-xs font-semibold text-slate-600 mb-1">取引日</label>
             <input type="date" id="tx-date" required class="w-full text-sm border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500">
           </div>
-          <!-- 区分 (②デフォルトを出庫に設定) -->
+          <!-- 区分 (デフォルト出庫) -->
           <div>
             <label class="block text-xs font-semibold text-slate-600 mb-1">入出庫種別</label>
             <select id="tx-type" required onchange="updateTransactionStyling()" class="w-full text-sm border border-slate-300 rounded-lg p-2.5 font-semibold focus:ring-2 focus:ring-indigo-500 bg-white">
@@ -340,11 +349,11 @@
               <option value="ADJ">🔄 在庫調整 (棚卸)</option>
             </select>
           </div>
-          <!-- 対象部品 -->
-          <div>
+          <!-- 対象部品（幅を2列分に拡張） -->
+          <div class="md:col-span-2 sm:col-span-2">
             <label class="block text-xs font-semibold text-slate-600 mb-1">対象部品</label>
             <div class="flex gap-2">
-              <select id="tx-part-id" required onchange="displayPartQuickInfo()" class="flex-1 min-w-0 text-sm border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 bg-white">
+              <select id="tx-part-id" required onchange="displayPartQuickInfo()" class="flex-1 min-w-0 text-sm border border-slate-300 rounded-lg p-2.5 font-mono font-medium focus:ring-2 focus:ring-indigo-500 bg-white">
                 <!-- 動的ロード -->
               </select>
               <button type="button" onclick="openQRScanModal('transaction')" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg text-sm font-medium flex items-center shadow-sm transition whitespace-nowrap" title="QRコード読み取りで部品を選択">
@@ -353,22 +362,27 @@
             </div>
             <div id="tx-quick-stock-display" class="text-xs text-slate-500 mt-1">現在庫: -</div>
           </div>
-          <!-- 数量 -->
+          <!-- 数量（最大2桁・コンパクト幅） -->
           <div>
-            <label class="block text-xs font-semibold text-slate-600 mb-1" id="tx-qty-label">出庫数量</label>
-            <input type="number" id="tx-qty" min="1" step="1" required placeholder="0" class="w-full text-sm border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 font-semibold">
+            <label class="block text-xs font-semibold text-slate-600 mb-1" id="tx-qty-label">出庫数量 (最大2桁)</label>
+            <input type="number" id="tx-qty" min="1" max="99" step="1" required placeholder="0" oninput="if(this.value.length>2) this.value=this.value.slice(0,2);" class="w-28 text-center text-base border-2 border-indigo-200 focus:border-indigo-600 rounded-lg p-2 font-mono font-bold">
           </div>
-          <!-- 担当者 (①一度入力すれば記憶) -->
+          <!-- 担当者 (登録済みリストから選択 または 直接入力) -->
           <div>
-            <label class="block text-xs font-semibold text-slate-600 mb-1">担当者名</label>
-            <input type="text" id="tx-staff" placeholder="例: 佐藤" onchange="saveStaffPreference(this.value)" class="w-full text-sm border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500">
+            <label class="block text-xs font-semibold text-slate-600 mb-1">担当者名 (履歴から選択可)</label>
+            <div class="relative">
+              <input type="text" id="tx-staff" list="staff-list" placeholder="例: 佐藤" onchange="registerStaffName(this.value)" class="w-full text-sm border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500">
+              <datalist id="staff-list">
+                <!-- 登録された担当者名一覧 -->
+              </datalist>
+            </div>
           </div>
           <!-- 理由・備考 -->
-          <div class="md:col-span-2 sm:col-span-2">
+          <div>
             <label class="block text-xs font-semibold text-slate-600 mb-1">備考 / 発注元 / 出荷先</label>
             <input type="text" id="tx-notes" placeholder="例: Aライン生産用、サプライヤ定期便など" class="w-full text-sm border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500">
           </div>
-          <!-- 登録ボタン (②出庫デフォルトスタイル) -->
+          <!-- 登録ボタン -->
           <div class="flex items-end">
             <button type="submit" id="tx-submit-btn" class="w-full bg-rose-600 hover:bg-rose-700 text-white font-medium text-sm py-2.5 px-4 rounded-lg shadow-sm transition flex items-center justify-center">
               <i class="fa-solid fa-arrow-up mr-1.5"></i>出庫を登録
@@ -472,12 +486,12 @@
         <input type="hidden" id="quick-part-id">
         <input type="hidden" id="quick-type">
         <div>
-          <label class="block text-xs font-semibold text-slate-700 mb-1" id="quick-qty-label">数量</label>
-          <input type="number" id="quick-qty" min="1" step="1" required class="w-full text-sm border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500 font-semibold" placeholder="数量を入力">
+          <label class="block text-xs font-semibold text-slate-700 mb-1" id="quick-qty-label">数量 (最大2桁)</label>
+          <input type="number" id="quick-qty" min="1" max="99" step="1" required class="w-28 text-center text-base border-2 border-indigo-200 focus:border-indigo-600 rounded-lg p-2 font-mono font-bold" placeholder="0" oninput="if(this.value.length>2) this.value=this.value.slice(0,2);">
         </div>
         <div>
           <label class="block text-xs font-semibold text-slate-700 mb-1">担当者名</label>
-          <input type="text" id="quick-staff" placeholder="例: 佐藤" onchange="saveStaffPreference(this.value)" class="w-full text-sm border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500">
+          <input type="text" id="quick-staff" list="staff-list" placeholder="例: 佐藤" onchange="registerStaffName(this.value)" class="w-full text-sm border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-indigo-500">
         </div>
         <div>
           <label class="block text-xs font-semibold text-slate-700 mb-1">備考</label>
@@ -647,14 +661,11 @@
     // LocalStorageから取得、なければ初期データ
     let parts = JSON.parse(localStorage.getItem('parts_inventory_data')) || DEFAULT_PARTS;
     let transactions = JSON.parse(localStorage.getItem('parts_transactions_data')) || DEFAULT_TRANSACTIONS;
-    // ① 担当者の記憶値を取得
+    // 担当者の記憶値および登録済み担当者リストを取得
     let savedStaff = localStorage.getItem('parts_last_staff') || '';
-
-    // 不正なダミーサンプル品番（90467-10161 や 62210-46030-C0、推測登録品）をLocalStorageから自動除去
-    const DUMMY_ALIASES = ['90467-10161', '62210-46030-C0', '62220-16060-C0', '62211-16060-C0', '62221-16060-C0'];
-    parts = parts.filter(p => !DUMMY_ALIASES.includes(p.alias2) && !DUMMY_ALIASES.includes(p.code));
-    if (parts.length === 0) {
-      parts = JSON.parse(JSON.stringify(DEFAULT_PARTS));
+    let registeredStaffList = JSON.parse(localStorage.getItem('parts_registered_staff_list')) || [];
+    if (savedStaff && !registeredStaffList.includes(savedStaff)) {
+      registeredStaffList.push(savedStaff);
     }
 
     // 62210-16060-C0 の発注点をメモ2指定値(5)に自動更新
@@ -699,16 +710,94 @@
       localStorage.setItem('parts_transactions_data', JSON.stringify(transactions));
     }
 
-    // ① 担当者の保存と同期
-    function saveStaffPreference(staffName) {
-      if (staffName !== undefined && staffName !== null) {
-        savedStaff = String(staffName).trim();
-        localStorage.setItem('parts_last_staff', savedStaff);
-        const txStaffInput = document.getElementById('tx-staff');
-        const quickStaffInput = document.getElementById('quick-staff');
-        if (txStaffInput && txStaffInput.value !== savedStaff) txStaffInput.value = savedStaff;
-        if (quickStaffInput && quickStaffInput.value !== savedStaff) quickStaffInput.value = savedStaff;
+    // 担当者名の登録・リスト同期・前回値保存
+    function registerStaffName(staffName) {
+      if (!staffName) return;
+      const trimmed = String(staffName).trim();
+      if (!trimmed) return;
+
+      savedStaff = trimmed;
+      localStorage.setItem('parts_last_staff', savedStaff);
+
+      if (!registeredStaffList.includes(trimmed)) {
+        registeredStaffList.push(trimmed);
+        localStorage.setItem('parts_registered_staff_list', JSON.stringify(registeredStaffList));
       }
+      updateStaffDataList();
+
+      const txStaffInput = document.getElementById('tx-staff');
+      const quickStaffInput = document.getElementById('quick-staff');
+      if (txStaffInput && txStaffInput.value !== trimmed) txStaffInput.value = trimmed;
+      if (quickStaffInput && quickStaffInput.value !== trimmed) quickStaffInput.value = trimmed;
+    }
+
+    // 未定義エラー対策: registerStaffName への参照エイリアス
+    function saveStaffPreference(staffName) {
+      registerStaffName(staffName);
+    }
+
+    // 検索入力欄クリアボタンの表示/非表示制御
+    function toggleSearchClearBtn(inputId, btnId) {
+      const input = document.getElementById(inputId);
+      const btn = document.getElementById(btnId);
+      if (!input || !btn) return;
+      if (input.value.trim().length > 0) {
+        btn.classList.remove('hidden');
+      } else {
+        btn.classList.add('hidden');
+      }
+    }
+
+    // シート1の品目別名2クリア
+    function clearInvSearch() {
+      const input = document.getElementById('inv-search');
+      const btn = document.getElementById('inv-clear-btn');
+      if (input) {
+        input.value = '';
+        input.focus();
+      }
+      if (btn) btn.classList.add('hidden');
+      renderInventory();
+    }
+
+    // シート2の品目別名2クリア
+    function clearMonthlySearch() {
+      const input = document.getElementById('monthly-search-query');
+      const btn = document.getElementById('monthly-clear-btn');
+      if (input) {
+        input.value = '';
+        input.focus();
+      }
+      if (btn) btn.classList.add('hidden');
+      renderMonthlyReport();
+    }
+
+    function updateStaffDataList() {
+      const datalist = document.getElementById('staff-list');
+      if (!datalist) return;
+      datalist.innerHTML = '';
+      registeredStaffList.forEach(name => {
+        const opt = document.createElement('option');
+        opt.value = name;
+        datalist.appendChild(opt);
+      });
+    }
+
+    // 入力内容をクリアする処理
+    function clearTransactionForm() {
+      const qtyInput = document.getElementById('tx-qty');
+      const notesInput = document.getElementById('tx-notes');
+      if (qtyInput) qtyInput.value = '';
+      if (notesInput) notesInput.value = '';
+      
+      // 日付を当日に再セット、種別を出庫に戻す
+      setTodayDate();
+      const typeSelect = document.getElementById('tx-type');
+      if (typeSelect) {
+        typeSelect.value = 'OUT';
+        updateTransactionStyling();
+      }
+      showToast('入力内容をクリアしました');
     }
 
     // 今日の日付をセット
@@ -723,7 +812,8 @@
         monthlyInput.value = currentYearMonth;
       }
 
-      // 記憶された担当者を反映
+      // 記憶された担当者を反映 & リスト更新
+      updateStaffDataList();
       if (savedStaff) {
         const staffInput = document.getElementById('tx-staff');
         if (staffInput) staffInput.value = savedStaff;
@@ -1060,6 +1150,8 @@
         staff,
         notes: notes || (type === 'ADJ' ? `実棚数 ${qty} に調整` : '')
       };
+
+      if (staff) registerStaffName(staff);
 
       transactions.unshift(tx);
       saveData();
@@ -1773,12 +1865,14 @@
           const invSearch = document.getElementById('inv-search');
           if (invSearch) {
             invSearch.value = matched.alias2 || matched.code;
+            toggleSearchClearBtn('inv-search', 'inv-clear-btn');
             renderInventory();
           }
         } else if (qrScanMode === 'monthly') {
           const monthlySearch = document.getElementById('monthly-search-query');
           if (monthlySearch) {
             monthlySearch.value = matched.alias2 || matched.code;
+            toggleSearchClearBtn('monthly-search-query', 'monthly-clear-btn');
             renderMonthlyReport();
           }
         } else if (qrScanMode === 'transaction') {
@@ -1847,7 +1941,8 @@
     // 初期化
     window.onload = function() {
       setTodayDate();
-      updateTransactionStyling(); // ② 初期状態で出庫ボタンスタイルを適用
+      updateTransactionStyling(); // 初期状態で出庫ボタンスタイルを適用
+      updateStaffDataList();
       renderInventory();
     };
   </script>
